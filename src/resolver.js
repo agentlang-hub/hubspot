@@ -1,6 +1,6 @@
 // HubSpot Studio Resolver - Browser-compatible with Skypack CDN dependencies
 import axios from 'https://cdn.skypack.dev/axios';
-import { asInstance } from 'https://cdn.skypack.dev/@fractl/agentlang';
+import { asInstance } from 'https://cdn.skypack.dev/agentlang';
 
 // Browser Configuration Management
 const BrowserConfig = {
