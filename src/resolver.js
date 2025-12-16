@@ -1,686 +1,875 @@
 // Import agentlang modules
-import { makeInstance } from 'agentlang/out/runtime/module.js'
-import { getLocalEnv } from 'agentlang/out/runtime/auth/defs.js'
+import { makeInstance } from "agentlang/out/runtime/module.js";
+import { getLocalEnv } from "agentlang/out/runtime/auth/defs.js";
 
 function asInstance(entity, entityType) {
-    const instanceMap = new Map(Object.entries(entity))
-    return makeInstance('hubspot', entityType, instanceMap)
+  const instanceMap = new Map(Object.entries(entity));
+  return makeInstance("hubspot", entityType, instanceMap);
 }
 
 const getResponseBody = async (response) => {
+  try {
     try {
-        try {
-            return await response.json()
-        } catch (e) {
-            return await response.text();
-        }
-    } catch (error) {
-        console.error("HUBSPOT RESOLVER: Error reading response body:", error);
-        return {};
+      return await response.json();
+    } catch (e) {
+      return await response.text();
     }
-}
+  } catch (error) {
+    console.error("HUBSPOT RESOLVER: Error reading response body:", error);
+    return {};
+  }
+};
 
 // Generic HTTP functions
 const makeRequest = async (endpoint, options = {}) => {
-    // Get configuration from agentlang environment
-    const accessToken = getLocalEnv('HUBSPOT_ACCESS_TOKEN')
-    const corsProxyUrl = getLocalEnv('VITE_API_CORS_PROXY_URL') || 'http://localhost:9999'
+  // Get configuration from agentlang environment
+  const accessToken = getLocalEnv("HUBSPOT_ACCESS_TOKEN");
+  const corsProxyUrl =
+    getLocalEnv("VITE_API_CORS_PROXY_URL") || "http://localhost:9999";
 
-    if (!accessToken) {
-        throw new Error('HubSpot access token is required. Set HUBSPOT_ACCESS_TOKEN in environment keys.');
+  if (!accessToken) {
+    throw new Error(
+      "HubSpot access token is required. Set HUBSPOT_ACCESS_TOKEN in environment keys.",
+    );
+  }
+
+  // Route through CORS proxy: http://localhost:9999/proxy/hubspot/crm/v3/...
+  const url = `${corsProxyUrl}/proxy/hubspot${endpoint}`;
+
+  const defaultOptions = {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+  };
+
+  console.log(`HUBSPOT RESOLVER: making http request ${options.method} ${url}`);
+
+  const config = { ...defaultOptions, ...options };
+
+  // Remove Content-Type header for GET requests without body
+  if (config.method === "GET") {
+    delete config.headers["Content-Type"];
+  }
+
+  const timeoutMs = 30000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.error(
+      `HUBSPOT RESOLVER: Request timeout after ${timeoutMs}ms - ${url} - ${JSON.stringify(options)}`,
+    );
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...config,
+      signal: controller.signal,
+    });
+
+    const body = await getResponseBody(response);
+    console.log(
+      `HUBSPOT RESOLVER: response ${response.status} ${response.ok}`,
+      body,
+    );
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error(
+        `HUBSPOT RESOLVER: HTTP Error ${response.status} - ${url} - ${JSON.stringify(options)}`,
+      );
+      throw new Error(
+        `HTTP Error: ${response.status} - ${JSON.stringify(body)}`,
+      );
     }
 
-    // Route through CORS proxy: http://localhost:9999/proxy/hubspot/crm/v3/...
-    const url = `${corsProxyUrl}/proxy/hubspot${endpoint}`;
+    return body;
+  } catch (error) {
+    clearTimeout(timeoutId);
 
-    const defaultOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-        }
-    };
-
-    console.log(`HUBSPOT RESOLVER: making http request ${options.method} ${url}`)
-
-    const config = { ...defaultOptions, ...options };
-
-    // Remove Content-Type header for GET requests without body
-    if (config.method === 'GET') {
-        delete config.headers['Content-Type'];
+    if (error.name === "AbortError") {
+      console.error(
+        `HUBSPOT RESOLVER: Request timeout - ${url} - ${JSON.stringify(options)}`,
+      );
+    } else if (
+      error.code === "ENOTFOUND" ||
+      error.code === "ECONNREFUSED" ||
+      error.code === "EHOSTUNREACH"
+    ) {
+      console.error(
+        `HUBSPOT RESOLVER: Network unreachable (${error.code}) - ${url} - ${JSON.stringify(options)}`,
+      );
+    } else if (error.code === "ECONNRESET" || error.code === "ETIMEDOUT") {
+      console.error(
+        `HUBSPOT RESOLVER: Connection error (${error.code}) - ${url} - ${JSON.stringify(options)}`,
+      );
+    } else {
+      console.error(
+        `HUBSPOT RESOLVER: Request failed (${error.name}) - ${url} - ${JSON.stringify(options)}`,
+      );
     }
 
-    const timeoutMs = 30000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-        console.error(`HUBSPOT RESOLVER: Request timeout after ${timeoutMs}ms - ${url} - ${JSON.stringify(options)}`);
-        controller.abort();
-    }, timeoutMs);
-
-    try {
-        const response = await fetch(url, {
-            ...config,
-            signal: controller.signal
-        });
-
-        const body = await getResponseBody(response);
-        console.log(`HUBSPOT RESOLVER: response ${response.status} ${response.ok}`, body)
-    
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            console.error(`HUBSPOT RESOLVER: HTTP Error ${response.status} - ${url} - ${JSON.stringify(options)}`);
-            throw new Error(`HTTP Error: ${response.status} - ${JSON.stringify(body)}`);
-        }
-
-        return body;
-
-    } catch (error) {
-        clearTimeout(timeoutId);
-        
-        if (error.name === 'AbortError') {
-            console.error(`HUBSPOT RESOLVER: Request timeout - ${url} - ${JSON.stringify(options)}`);
-        } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'EHOSTUNREACH') {
-            console.error(`HUBSPOT RESOLVER: Network unreachable (${error.code}) - ${url} - ${JSON.stringify(options)}`);
-        } else if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
-            console.error(`HUBSPOT RESOLVER: Connection error (${error.code}) - ${url} - ${JSON.stringify(options)}`);
-        } else {
-            console.error(`HUBSPOT RESOLVER: Request failed (${error.name}) - ${url} - ${JSON.stringify(options)}`);
-        }
-        
-        throw error;
-    }
+    throw error;
+  }
 };
 
 const makeGetRequest = async (endpoint) => {
-    console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${endpoint}\n`);    
-    return await makeRequest(endpoint, { method: 'GET' });
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${endpoint}\n`);
+  return await makeRequest(endpoint, { method: "GET" });
 };
 
 const makePostRequest = async (endpoint, body) => {
-    console.log(`HUBSPOT RESOLVER: Creating in HubSpot: ${endpoint}\n`);
-    return await makeRequest(endpoint, {
-        method: 'POST',
-        body: JSON.stringify(body)
-    });
+  console.log(`HUBSPOT RESOLVER: Creating in HubSpot: ${endpoint}\n`);
+  return await makeRequest(endpoint, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 };
 
 const makePatchRequest = async (endpoint, body) => {
-    console.log(`HUBSPOT RESOLVER: Updating in HubSpot: ${endpoint}\n`);
-    return await makeRequest(endpoint, {
-        method: 'PATCH',
-        body: JSON.stringify(body)
-    });
+  console.log(`HUBSPOT RESOLVER: Updating in HubSpot: ${endpoint}\n`);
+  return await makeRequest(endpoint, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 };
 
 const makeDeleteRequest = async (endpoint) => {
-    console.log(`HUBSPOT RESOLVER: Deleting from HubSpot: ${endpoint}\n`);
-    return await makeRequest(endpoint, { method: 'DELETE' });
+  console.log(`HUBSPOT RESOLVER: Deleting from HubSpot: ${endpoint}\n`);
+  return await makeRequest(endpoint, { method: "DELETE" });
 };
 
 // Contact functions
 export const createContact = async (env, attributes) => {
-    const data = {
-        properties: {
-            firstname: attributes.attributes.get('first_name'),
-            lastname: attributes.attributes.get('last_name'),
-            email: attributes.attributes.get('email'),
-            jobtitle: attributes.attributes.get('job_title'),
-            lastcontacted: attributes.attributes.get('last_contacted'),
-            lastactivitydate: attributes.attributes.get('last_activity_date'),
-            hs_lead_status: attributes.attributes.get('lead_status'),
-            lifecyclestage: attributes.attributes.get('lifecycle_stage'),
-            salutation: attributes.attributes.get('salutation'),
-            mobilephone: attributes.attributes.get('mobile_phone_number'),
-            website: attributes.attributes.get('website_url'),
-            hubspot_owner_id: attributes.attributes.get('owner')
-        }
-    };
+  const data = {
+    properties: {
+      firstname: attributes.attributes.get("first_name"),
+      lastname: attributes.attributes.get("last_name"),
+      email: attributes.attributes.get("email"),
+      jobtitle: attributes.attributes.get("job_title"),
+      lastcontacted: attributes.attributes.get("last_contacted"),
+      lastactivitydate: attributes.attributes.get("last_activity_date"),
+      hs_lead_status: attributes.attributes.get("lead_status"),
+      lifecyclestage: attributes.attributes.get("lifecycle_stage"),
+      salutation: attributes.attributes.get("salutation"),
+      mobilephone: attributes.attributes.get("mobile_phone_number"),
+      website: attributes.attributes.get("website_url"),
+      hubspot_owner_id: attributes.attributes.get("owner"),
+    },
+  };
 
-    try {
-        const result = await makePostRequest('/crm/v3/objects/contacts', data);
-        return {"result": "success", "id": result.id};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to create contact: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePostRequest("/crm/v3/objects/contacts", data);
+    return { result: "success", id: result.id };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to create contact: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const queryContact = async (env, attrs) => {
-    const id = attrs.queryAttributeValues?.get('__path__')?.split('/')?.pop() ?? null;
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
 
-    console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-    try {
-        let inst
-        if (id) {
-            inst = await makeGetRequest(`/crm/v3/objects/contacts/${id}`);
-        } else {
-            inst = await makeGetRequest('/crm/v3/objects/contacts');
-            inst = inst.results
-        }
-        if (!(inst instanceof Array)) {
-            inst = [inst]
-        }
-        return inst.map((data) => { return asInstance(data, 'Contact') })
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to query contacts: ${error}`);
-        return {"result": "error", "message": error.message};
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
+  try {
+    let inst;
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/objects/contacts/${id}`);
+    } else {
+      inst = await makeGetRequest("/crm/v3/objects/contacts");
+      inst = inst.results;
     }
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+    return inst.map((data) => {
+      return asInstance(data, "Contact");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query contacts: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const updateContact = async (env, attributes, newAttrs) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Contact ID is required for update"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Contact ID is required for update" };
+  }
 
-    const data = {
-        properties: {
-            firstname: newAttrs.get('first_name'),
-            lastname: newAttrs.get('last_name'),
-            email: newAttrs.get('email'),
-            jobtitle: newAttrs.get('job_title'),
-            lastcontacted: newAttrs.get('last_contacted'),
-            lastactivitydate: newAttrs.get('last_activity_date'),
-            hs_lead_status: newAttrs.get('lead_status'),
-            lifecyclestage: newAttrs.get('lifecycle_stage'),
-            salutation: newAttrs.get('salutation'),
-            mobilephone: newAttrs.get('mobile_phone_number'),
-            website: newAttrs.get('website_url'),
-            hubspot_owner_id: newAttrs.get('owner')
-        }
-    };
+  const data = {
+    properties: {
+      firstname: newAttrs.get("first_name"),
+      lastname: newAttrs.get("last_name"),
+      email: newAttrs.get("email"),
+      jobtitle: newAttrs.get("job_title"),
+      lastcontacted: newAttrs.get("last_contacted"),
+      lastactivitydate: newAttrs.get("last_activity_date"),
+      hs_lead_status: newAttrs.get("lead_status"),
+      lifecyclestage: newAttrs.get("lifecycle_stage"),
+      salutation: newAttrs.get("salutation"),
+      mobilephone: newAttrs.get("mobile_phone_number"),
+      website: newAttrs.get("website_url"),
+      hubspot_owner_id: newAttrs.get("owner"),
+    },
+  };
 
-    try {
-        const result = await makePatchRequest(`/crm/v3/objects/contacts/${id}`, data);
-        return asInstance(result, 'Contact')
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to update contact: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePatchRequest(
+      `/crm/v3/objects/contacts/${id}`,
+      data,
+    );
+    return asInstance(result, "Contact");
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to update contact: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const deleteContact = async (env, attributes) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Contact ID is required for deletion"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Contact ID is required for deletion" };
+  }
 
-    try {
-        await makeDeleteRequest(`/crm/v3/objects/contacts/${id}`);
-        return {"result": "success"};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to delete contact: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    await makeDeleteRequest(`/crm/v3/objects/contacts/${id}`);
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to delete contact: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 // Company functions
 export const createCompany = async (env, attributes) => {
-    const data = {
-        properties: {
-            name: attributes.attributes.get('name'),
-            industry: attributes.attributes.get('industry'),
-            description: attributes.attributes.get('description'),
-            country: attributes.attributes.get('country'),
-            city: attributes.attributes.get('city'),
-            hs_lead_status: attributes.attributes.get('lead_status'),
-            lifecyclestage: attributes.attributes.get('lifecycle_stage'),
-            hubspot_owner_id: attributes.attributes.get('owner'),
-            founded_year: attributes.attributes.get('year_founded'),
-            website: attributes.attributes.get('website_url')
-        }
-    };
+  const data = {
+    properties: {
+      name: attributes.attributes.get("name"),
+      industry: attributes.attributes.get("industry"),
+      description: attributes.attributes.get("description"),
+      country: attributes.attributes.get("country"),
+      city: attributes.attributes.get("city"),
+      hs_lead_status: attributes.attributes.get("lead_status"),
+      lifecyclestage: attributes.attributes.get("lifecycle_stage"),
+      hubspot_owner_id: attributes.attributes.get("owner"),
+      founded_year: attributes.attributes.get("year_founded"),
+      website: attributes.attributes.get("website_url"),
+    },
+  };
 
-    try {
-        const result = await makePostRequest('/crm/v3/objects/companies', data);
-        return {"result": "success", "id": result.id};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to create company: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePostRequest("/crm/v3/objects/companies", data);
+    return { result: "success", id: result.id };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to create company: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const queryCompany = async (env, attrs) => {
-    const id = attrs.queryAttributeValues?.get('__path__')?.split('/')?.pop() ?? null;
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
 
-    console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-    try {
-        let inst
-        if (id) {
-            inst = await makeGetRequest(`/crm/v3/objects/companies/${id}`);
-        } else {
-            inst = await makeGetRequest('/crm/v3/objects/companies');
-            inst = inst.results
-        }
-        if (!(inst instanceof Array)) {
-            inst = [inst]
-        }
-        return inst.map((data) => { return asInstance(data, 'Company') })
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to query companies: ${error}`);
-        return {"result": "error", "message": error.message};
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
+  try {
+    let inst;
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/objects/companies/${id}`);
+    } else {
+      inst = await makeGetRequest("/crm/v3/objects/companies");
+      inst = inst.results;
     }
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+    return inst.map((data) => {
+      return asInstance(data, "Company");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query companies: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const updateCompany = async (env, attributes, newAttrs) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Company ID is required for update"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Company ID is required for update" };
+  }
 
-    const data = {
-        properties: {
-            name: newAttrs.get('name'),
-            industry: newAttrs.get('industry'),
-            description: newAttrs.get('description'),
-            country: newAttrs.get('country'),
-            city: newAttrs.get('city'),
-            hs_lead_status: newAttrs.get('lead_status'),
-            lifecyclestage: newAttrs.get('lifecycle_stage'),
-            hubspot_owner_id: newAttrs.get('owner'),
-            founded_year: newAttrs.get('year_founded'),
-            website: newAttrs.get('website_url')
-        }
-    };
+  const data = {
+    properties: {
+      name: newAttrs.get("name"),
+      industry: newAttrs.get("industry"),
+      description: newAttrs.get("description"),
+      country: newAttrs.get("country"),
+      city: newAttrs.get("city"),
+      hs_lead_status: newAttrs.get("lead_status"),
+      lifecyclestage: newAttrs.get("lifecycle_stage"),
+      hubspot_owner_id: newAttrs.get("owner"),
+      founded_year: newAttrs.get("year_founded"),
+      website: newAttrs.get("website_url"),
+    },
+  };
 
-    try {
-        const result = await makePatchRequest(`/crm/v3/objects/companies/${id}`, data);
-        return asInstance(result, 'Company')
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to update company: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePatchRequest(
+      `/crm/v3/objects/companies/${id}`,
+      data,
+    );
+    return asInstance(result, "Company");
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to update company: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const deleteCompany = async (env, attributes) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Company ID is required for deletion"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Company ID is required for deletion" };
+  }
 
-    try {
-        await makeDeleteRequest(`/crm/v3/objects/companies/${id}`);
-        return {"result": "success"};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to delete company: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    await makeDeleteRequest(`/crm/v3/objects/companies/${id}`);
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to delete company: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 // Deal functions
 export const createDeal = async (env, attributes) => {
-    const data = {
-        properties: {
-            dealname: attributes.attributes.get('deal_name'),
-            dealstage: attributes.attributes.get('deal_stage'),
-            amount: attributes.attributes.get('amount'),
-            closedate: attributes.attributes.get('close_date'),
-            dealtype: attributes.attributes.get('deal_type'),
-            description: attributes.attributes.get('description'),
-            hubspot_owner_id: attributes.attributes.get('owner'),
-            pipeline: attributes.attributes.get('pipeline'),
-            priority: attributes.attributes.get('priority')
-        }
-    };
+  const data = {
+    properties: {
+      dealname: attributes.attributes.get("deal_name"),
+      dealstage: attributes.attributes.get("deal_stage"),
+      amount: attributes.attributes.get("amount"),
+      closedate: attributes.attributes.get("close_date"),
+      dealtype: attributes.attributes.get("deal_type"),
+      description: attributes.attributes.get("description"),
+      hubspot_owner_id: attributes.attributes.get("owner"),
+      pipeline: attributes.attributes.get("pipeline"),
+      priority: attributes.attributes.get("priority"),
+    },
+  };
 
-    try {
-        const result = await makePostRequest('/crm/v3/objects/deals', data);
-        return {"result": "success", "id": result.id};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to create deal: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePostRequest("/crm/v3/objects/deals", data);
+    return { result: "success", id: result.id };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to create deal: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const queryDeal = async (env, attrs) => {
-    const id = attrs.queryAttributeValues?.get('__path__')?.split('/')?.pop() ?? null;
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
 
-    console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-    try {
-        let inst
-        if (id) {
-            inst = await makeGetRequest(`/crm/v3/objects/deals/${id}`);
-        } else {
-            inst = await makeGetRequest('/crm/v3/objects/deals');
-            inst = inst.results
-        }
-        if (!(inst instanceof Array)) {
-            inst = [inst]
-        }
-        return inst.map((data) => { return asInstance(data, 'Deal') })
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to query deals: ${error}`);
-        return {"result": "error", "message": error.message};
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
+  try {
+    let inst;
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/objects/deals/${id}`);
+    } else {
+      inst = await makeGetRequest("/crm/v3/objects/deals");
+      inst = inst.results;
     }
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+    return inst.map((data) => {
+      return asInstance(data, "Deal");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query deals: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const updateDeal = async (env, attributes, newAttrs) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Deal ID is required for update"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Deal ID is required for update" };
+  }
 
-    const data = {
-        properties: {
-            dealname: newAttrs.get('deal_name'),
-            dealstage: newAttrs.get('deal_stage'),
-            amount: newAttrs.get('amount'),
-            closedate: newAttrs.get('close_date'),
-            dealtype: newAttrs.get('deal_type'),
-            description: newAttrs.get('description'),
-            hubspot_owner_id: newAttrs.get('owner'),
-            pipeline: newAttrs.get('pipeline'),
-            priority: newAttrs.get('priority')
-        }
-    };
+  const data = {
+    properties: {
+      dealname: newAttrs.get("deal_name"),
+      dealstage: newAttrs.get("deal_stage"),
+      amount: newAttrs.get("amount"),
+      closedate: newAttrs.get("close_date"),
+      dealtype: newAttrs.get("deal_type"),
+      description: newAttrs.get("description"),
+      hubspot_owner_id: newAttrs.get("owner"),
+      pipeline: newAttrs.get("pipeline"),
+      priority: newAttrs.get("priority"),
+    },
+  };
 
-    try {
-        const result = await makePatchRequest(`/crm/v3/objects/deals/${id}`, data);
-        return asInstance(result, 'Deal')
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to update deal: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePatchRequest(`/crm/v3/objects/deals/${id}`, data);
+    return asInstance(result, "Deal");
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to update deal: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const deleteDeal = async (env, attributes) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Deal ID is required for deletion"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Deal ID is required for deletion" };
+  }
 
-    try {
-        await makeDeleteRequest(`/crm/v3/objects/deals/${id}`);
-        return {"result": "success"};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to delete deal: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    await makeDeleteRequest(`/crm/v3/objects/deals/${id}`);
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to delete deal: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 // Owner functions
 export const createOwner = async (env, attributes) => {
-    const data = {
-        email: attributes.attributes.get('email'),
-        firstName: attributes.attributes.get('first_name'),
-        lastName: attributes.attributes.get('last_name')
-    };
+  const data = {
+    email: attributes.attributes.get("email"),
+    firstName: attributes.attributes.get("first_name"),
+    lastName: attributes.attributes.get("last_name"),
+  };
 
-    try {
-        const result = await makePostRequest('/crm/v3/owners', data);
-        return {"result": "success", "id": result.id};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to create owner: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePostRequest("/crm/v3/owners", data);
+    return { result: "success", id: result.id };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to create owner: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const queryOwner = async (env, attrs) => {
-    const id = attrs.queryAttributeValues?.get('__path__')?.split('/')?.pop() ?? null;
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
 
-    console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-    try {
-        let inst
-        if (id) {
-            inst = await makeGetRequest(`/crm/v3/owners/${id}`);
-        } else {
-            inst = await makeGetRequest('/crm/v3/owners');
-            inst = inst.results
-        }
-        if (!(inst instanceof Array)) {
-            inst = [inst]
-        }
-        return inst.map((data) => { return asInstance(data, 'Owner') })
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to query owners: ${error}`);
-        return {"result": "error", "message": error.message};
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
+  try {
+    let inst;
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/owners/${id}`);
+    } else {
+      inst = await makeGetRequest("/crm/v3/owners");
+      inst = inst.results;
     }
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+    return inst.map((data) => {
+      return asInstance(data, "Owner");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query owners: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const updateOwner = async (env, attributes, newAttrs) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Owner ID is required for update"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Owner ID is required for update" };
+  }
 
-    const data = {
-        email: newAttrs.get('email'),
-        firstName: newAttrs.get('first_name'),
-        lastName: newAttrs.get('last_name')
-    };
+  const data = {
+    email: newAttrs.get("email"),
+    firstName: newAttrs.get("first_name"),
+    lastName: newAttrs.get("last_name"),
+  };
 
-    try {
-        const result = await makePatchRequest(`/crm/v3/owners/${id}`, data);
-        return asInstance(result, 'Owner')
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to update owner: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePatchRequest(`/crm/v3/owners/${id}`, data);
+    return asInstance(result, "Owner");
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to update owner: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const deleteOwner = async (env, attributes) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Owner ID is required for deletion"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Owner ID is required for deletion" };
+  }
 
-    try {
-        await makeDeleteRequest(`/crm/v3/owners/${id}`);
-        return {"result": "success"};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to delete owner: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    await makeDeleteRequest(`/crm/v3/owners/${id}`);
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to delete owner: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 // Task functions
 export const createTask = async (env, attributes) => {
-    const data = {
-        properties: {
-            hs_task_type: attributes.attributes.get('task_type'),
-            hs_task_subject: attributes.attributes.get('title'),
-            hs_task_priority: attributes.attributes.get('priority'),
-            hs_task_assigned_to: attributes.attributes.get('assigned_to'),
-            hs_task_due_date: attributes.attributes.get('due_date'),
-            hs_task_status: attributes.attributes.get('status'),
-            hs_task_body: attributes.attributes.get('description'),
-            hubspot_owner_id: attributes.attributes.get('owner')
-        }
-    };
+  const data = {
+    properties: {
+      hs_task_type: attributes.attributes.get("task_type"),
+      hs_task_subject: attributes.attributes.get("title"),
+      hs_task_priority: attributes.attributes.get("priority"),
+      hs_task_assigned_to: attributes.attributes.get("assigned_to"),
+      hs_task_due_date: attributes.attributes.get("due_date"),
+      hs_task_status: attributes.attributes.get("status"),
+      hs_task_body: attributes.attributes.get("description"),
+      hubspot_owner_id: attributes.attributes.get("owner"),
+    },
+  };
 
-    try {
-        const result = await makePostRequest('/crm/v3/objects/tasks', data);
-        return {"result": "success", "id": result.id};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to create task: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePostRequest("/crm/v3/objects/tasks", data);
+    return { result: "success", id: result.id };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to create task: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const queryTask = async (env, attrs) => {
-    const id = attrs.queryAttributeValues?.get('__path__')?.split('/')?.pop() ?? null;
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
 
-    console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-    try {
-        let inst
-        if (id) {
-            inst = await makeGetRequest(`/crm/v3/objects/tasks/${id}`);
-        } else {
-            inst = await makeGetRequest('/crm/v3/objects/tasks');
-            inst = inst.results
-        }
-        if (!(inst instanceof Array)) {
-            inst = [inst]
-        }
-        return inst.map((data) => { return asInstance(data, 'Task') })
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to query tasks: ${error}`);
-        return {"result": "error", "message": error.message};
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
+  try {
+    let inst;
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/objects/tasks/${id}`);
+    } else {
+      inst = await makeGetRequest("/crm/v3/objects/tasks");
+      inst = inst.results;
     }
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+    return inst.map((data) => {
+      return asInstance(data, "Task");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query tasks: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const updateTask = async (env, attributes, newAttrs) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Task ID is required for update"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Task ID is required for update" };
+  }
 
-    const data = {
-        properties: {
-            hs_task_type: newAttrs.get('task_type'),
-            hs_task_subject: newAttrs.get('title'),
-            hs_task_priority: newAttrs.get('priority'),
-            hs_task_assigned_to: newAttrs.get('assigned_to'),
-            hs_task_due_date: newAttrs.get('due_date'),
-            hs_task_status: newAttrs.get('status'),
-            hs_task_body: newAttrs.get('description'),
-            hubspot_owner_id: newAttrs.get('owner')
-        }
-    };
+  const data = {
+    properties: {
+      hs_task_type: newAttrs.get("task_type"),
+      hs_task_subject: newAttrs.get("title"),
+      hs_task_priority: newAttrs.get("priority"),
+      hs_task_assigned_to: newAttrs.get("assigned_to"),
+      hs_task_due_date: newAttrs.get("due_date"),
+      hs_task_status: newAttrs.get("status"),
+      hs_task_body: newAttrs.get("description"),
+      hubspot_owner_id: newAttrs.get("owner"),
+    },
+  };
 
-    try {
-        const result = await makePatchRequest(`/crm/v3/objects/tasks/${id}`, data);
-        return asInstance(result, 'Task')
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to update task: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    const result = await makePatchRequest(`/crm/v3/objects/tasks/${id}`, data);
+    return asInstance(result, "Task");
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to update task: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const deleteTask = async (env, attributes) => {
-    const id = attributes.attributes.get('id');
-    if (!id) {
-        return {"result": "error", "message": "Task ID is required for deletion"};
-    }
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Task ID is required for deletion" };
+  }
 
-    try {
-        await makeDeleteRequest(`/crm/v3/objects/tasks/${id}`);
-        return {"result": "success"};
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to delete task: ${error}`);
-        return {"result": "error", "message": error.message};
-    }
+  try {
+    await makeDeleteRequest(`/crm/v3/objects/tasks/${id}`);
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to delete task: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 // Subscription functions for real-time updates
 async function getAndProcessRecords(resolver, entityType) {
-    try {
-        let endpoint;
-        switch (entityType) {
-            case 'contacts':
-                endpoint = '/crm/v3/objects/contacts';
-                break;
-            case 'companies':
-                endpoint = '/crm/v3/objects/companies';
-                break;
-            case 'deals':
-                endpoint = '/crm/v3/objects/deals';
-                break;
-            case 'owners':
-                endpoint = '/crm/v3/owners';
-                break;
-            case 'tasks':
-                endpoint = '/crm/v3/objects/tasks';
-                break;
-            default:
-                console.error(`HUBSPOT RESOLVER: Unknown entity type: ${entityType}`);
-                return;
-        }
-
-        const result = await makeGetRequest(endpoint);
-        
-        if (result && result.results && Array.isArray(result.results)) {
-            for (let i = 0; i < result.results.length; ++i) {
-                const record = result.results[i];
-                console.log(`HUBSPOT RESOLVER: Processing ${entityType} ${record.id}`);
-                
-                // Create instance for subscription
-                const inst = {
-                    id: record.id,
-                    type: entityType,
-                    data: record,
-                    timestamp: new Date().toISOString()
-                };
-                
-                await resolver.onSubscription(inst, true);
-            }
-        }
-    } catch (error) {
-        console.error(`HUBSPOT RESOLVER: Failed to process ${entityType} records: ${error}`);
+  try {
+    let endpoint;
+    switch (entityType) {
+      case "contacts":
+        endpoint = "/crm/v3/objects/contacts";
+        break;
+      case "companies":
+        endpoint = "/crm/v3/objects/companies";
+        break;
+      case "deals":
+        endpoint = "/crm/v3/objects/deals";
+        break;
+      case "owners":
+        endpoint = "/crm/v3/owners";
+        break;
+      case "tasks":
+        endpoint = "/crm/v3/objects/tasks";
+        break;
+      case "meetings":
+        endpoint = "/crm/v3/objects/meetings";
+        break;
+      default:
+        console.error(`HUBSPOT RESOLVER: Unknown entity type: ${entityType}`);
+        return;
     }
+
+    const result = await makeGetRequest(endpoint);
+
+    if (result && result.results && Array.isArray(result.results)) {
+      for (let i = 0; i < result.results.length; ++i) {
+        const record = result.results[i];
+        console.log(`HUBSPOT RESOLVER: Processing ${entityType} ${record.id}`);
+
+        // Create instance for subscription
+        const inst = {
+          id: record.id,
+          type: entityType,
+          data: record,
+          timestamp: new Date().toISOString(),
+        };
+
+        await resolver.onSubscription(inst, true);
+      }
+    }
+  } catch (error) {
+    console.error(
+      `HUBSPOT RESOLVER: Failed to process ${entityType} records: ${error}`,
+    );
+  }
 }
 
 async function handleSubsContacts(resolver) {
-    console.log('HUBSPOT RESOLVER: Fetching contacts for subscription...');
-    await getAndProcessRecords(resolver, 'contacts');
+  console.log("HUBSPOT RESOLVER: Fetching contacts for subscription...");
+  await getAndProcessRecords(resolver, "contacts");
 }
 
 async function handleSubsCompanies(resolver) {
-    console.log('HUBSPOT RESOLVER: Fetching companies for subscription...');
-    await getAndProcessRecords(resolver, 'companies');
+  console.log("HUBSPOT RESOLVER: Fetching companies for subscription...");
+  await getAndProcessRecords(resolver, "companies");
 }
 
 async function handleSubsDeals(resolver) {
-    console.log('HUBSPOT RESOLVER: Fetching deals for subscription...');
-    await getAndProcessRecords(resolver, 'deals');
+  console.log("HUBSPOT RESOLVER: Fetching deals for subscription...");
+  await getAndProcessRecords(resolver, "deals");
 }
 
 async function handleSubsOwners(resolver) {
-    console.log('HUBSPOT RESOLVER: Fetching owners for subscription...');
-    await getAndProcessRecords(resolver, 'owners');
+  console.log("HUBSPOT RESOLVER: Fetching owners for subscription...");
+  await getAndProcessRecords(resolver, "owners");
 }
 
 async function handleSubsTasks(resolver) {
-    console.log('HUBSPOT RESOLVER: Fetching tasks for subscription...');
-    await getAndProcessRecords(resolver, 'tasks');
+  console.log("HUBSPOT RESOLVER: Fetching tasks for subscription...");
+  await getAndProcessRecords(resolver, "tasks");
 }
 
 export async function subsContacts(resolver) {
+  await handleSubsContacts(resolver);
+  const intervalMinutes =
+    parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  console.log(
+    `HUBSPOT RESOLVER: Setting contacts polling interval to ${intervalMinutes} minutes`,
+  );
+  setInterval(async () => {
     await handleSubsContacts(resolver);
-    const intervalMinutes = parseInt(getLocalEnv('HUBSPOT_POLL_INTERVAL_MINUTES')) || 15;
-    const intervalMs = intervalMinutes * 60 * 1000;
-    console.log(`HUBSPOT RESOLVER: Setting contacts polling interval to ${intervalMinutes} minutes`);
-    setInterval(async () => {
-        await handleSubsContacts(resolver);
-    }, intervalMs);
+  }, intervalMs);
 }
 
 export async function subsCompanies(resolver) {
+  await handleSubsCompanies(resolver);
+  const intervalMinutes =
+    parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  console.log(
+    `HUBSPOT RESOLVER: Setting companies polling interval to ${intervalMinutes} minutes`,
+  );
+  setInterval(async () => {
     await handleSubsCompanies(resolver);
-    const intervalMinutes = parseInt(getLocalEnv('HUBSPOT_POLL_INTERVAL_MINUTES')) || 15;
-    const intervalMs = intervalMinutes * 60 * 1000;
-    console.log(`HUBSPOT RESOLVER: Setting companies polling interval to ${intervalMinutes} minutes`);
-    setInterval(async () => {
-        await handleSubsCompanies(resolver);
-    }, intervalMs);
+  }, intervalMs);
 }
 
 export async function subsDeals(resolver) {
+  await handleSubsDeals(resolver);
+  const intervalMinutes =
+    parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  console.log(
+    `HUBSPOT RESOLVER: Setting deals polling interval to ${intervalMinutes} minutes`,
+  );
+  setInterval(async () => {
     await handleSubsDeals(resolver);
-    const intervalMinutes = parseInt(getLocalEnv('HUBSPOT_POLL_INTERVAL_MINUTES')) || 15;
-    const intervalMs = intervalMinutes * 60 * 1000;
-    console.log(`HUBSPOT RESOLVER: Setting deals polling interval to ${intervalMinutes} minutes`);
-    setInterval(async () => {
-        await handleSubsDeals(resolver);
-    }, intervalMs);
+  }, intervalMs);
 }
 
 export async function subsOwners(resolver) {
+  await handleSubsOwners(resolver);
+  const intervalMinutes =
+    parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  console.log(
+    `HUBSPOT RESOLVER: Setting owners polling interval to ${intervalMinutes} minutes`,
+  );
+  setInterval(async () => {
     await handleSubsOwners(resolver);
-    const intervalMinutes = parseInt(getLocalEnv('HUBSPOT_POLL_INTERVAL_MINUTES')) || 15;
-    const intervalMs = intervalMinutes * 60 * 1000;
-    console.log(`HUBSPOT RESOLVER: Setting owners polling interval to ${intervalMinutes} minutes`);
-    setInterval(async () => {
-        await handleSubsOwners(resolver);
-    }, intervalMs);
+  }, intervalMs);
 }
 
 export async function subsTasks(resolver) {
+  await handleSubsTasks(resolver);
+  const intervalMinutes =
+    parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  console.log(
+    `HUBSPOT RESOLVER: Setting tasks polling interval to ${intervalMinutes} minutes`,
+  );
+  setInterval(async () => {
     await handleSubsTasks(resolver);
-    const intervalMinutes = parseInt(getLocalEnv('HUBSPOT_POLL_INTERVAL_MINUTES')) || 15;
-    const intervalMs = intervalMinutes * 60 * 1000;
-    console.log(`HUBSPOT RESOLVER: Setting tasks polling interval to ${intervalMinutes} minutes`);
-    setInterval(async () => {
-        await handleSubsTasks(resolver);
-    }, intervalMs);
+  }, intervalMs);
+}
+
+// Meeting functions
+export const createMeeting = async (env, attributes) => {
+  const data = {
+    properties: {
+      hs_timestamp: attributes.attributes.get("timestamp"),
+      hs_meeting_title: attributes.attributes.get("meeting_title"),
+      hubspot_owner_id: attributes.attributes.get("owner"),
+      hs_meeting_body: attributes.attributes.get("meeting_body"),
+      hs_internal_meeting_notes: attributes.attributes.get(
+        "internal_meeting_notes",
+      ),
+      hs_meeting_external_url: attributes.attributes.get(
+        "meeting_external_url",
+      ),
+      hs_meeting_location: attributes.attributes.get("meeting_location"),
+      hs_meeting_start_time: attributes.attributes.get("meeting_start_time"),
+      hs_meeting_end_time: attributes.attributes.get("meeting_end_time"),
+      hs_meeting_outcome: attributes.attributes.get("meeting_outcome"),
+      hs_activity_type: attributes.attributes.get("activity_type"),
+      hs_attachment_ids: attributes.attributes.get("attachment_ids"),
+    },
+  };
+
+  try {
+    const result = await makePostRequest("/crm/v3/objects/meetings", data);
+    return { result: "success", id: result.id };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to create meeting: ${error}`);
+    return { result: "error", message: error.message };
+  }
+};
+
+export const queryMeeting = async (env, attrs) => {
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
+
+  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
+  try {
+    let inst;
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/objects/meetings/${id}`);
+    } else {
+      inst = await makeGetRequest("/crm/v3/objects/meetings");
+      inst = inst.results;
+    }
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+    return inst.map((data) => {
+      return asInstance(data, "Meeting");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query meetings: ${error}`);
+    return { result: "error", message: error.message };
+  }
+};
+
+export const updateMeeting = async (env, attributes, newAttrs) => {
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Meeting ID is required for update" };
+  }
+
+  const data = {
+    properties: {
+      hs_timestamp: newAttrs.get("timestamp"),
+      hs_meeting_title: newAttrs.get("meeting_title"),
+      hubspot_owner_id: newAttrs.get("owner"),
+      hs_meeting_body: newAttrs.get("meeting_body"),
+      hs_internal_meeting_notes: newAttrs.get("internal_meeting_notes"),
+      hs_meeting_external_url: newAttrs.get("meeting_external_url"),
+      hs_meeting_location: newAttrs.get("meeting_location"),
+      hs_meeting_start_time: newAttrs.get("meeting_start_time"),
+      hs_meeting_end_time: newAttrs.get("meeting_end_time"),
+      hs_meeting_outcome: newAttrs.get("meeting_outcome"),
+      hs_activity_type: newAttrs.get("activity_type"),
+      hs_attachment_ids: newAttrs.get("attachment_ids"),
+    },
+  };
+
+  try {
+    const result = await makePatchRequest(
+      `/crm/v3/objects/meetings/${id}`,
+      data,
+    );
+    return asInstance(result, "Meeting");
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to update meeting: ${error}`);
+    return { result: "error", message: error.message };
+  }
+};
+
+export const deleteMeeting = async (env, attributes) => {
+  const id = attributes.attributes.get("id");
+  if (!id) {
+    return { result: "error", message: "Meeting ID is required for deletion" };
+  }
+
+  try {
+    await makeDeleteRequest(`/crm/v3/objects/meetings/${id}`);
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to delete meeting: ${error}`);
+    return { result: "error", message: error.message };
+  }
+};
+
+async function handleSubsMeetings(resolver) {
+  console.log("HUBSPOT RESOLVER: Fetching meetings for subscription...");
+  await getAndProcessRecords(resolver, "meetings");
+}
+
+export async function subsMeetings(resolver) {
+  await handleSubsMeetings(resolver);
+  const intervalMinutes =
+    parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  console.log(
+    `HUBSPOT RESOLVER: Setting meetings polling interval to ${intervalMinutes} minutes`,
+  );
+  setInterval(async () => {
+    await handleSubsMeetings(resolver);
+  }, intervalMs);
 }

@@ -88,6 +88,26 @@ entity Task {
     archived Boolean @optional
 }
 
+entity Meeting {
+    id String @id @default(uuid()),
+    timestamp String @optional,
+    meeting_title String @optional,
+    owner String @optional,
+    meeting_body String @optional,
+    internal_meeting_notes String @optional,
+    meeting_external_url String @optional,
+    meeting_location String @optional,
+    meeting_start_time String @optional,
+    meeting_end_time String @optional,
+    meeting_outcome String @optional,
+    activity_type String @optional,
+    attachment_ids String @optional,
+    properties Map @optional,
+    createdAt String @optional,
+    updatedAt String @optional,
+    archived Boolean @optional
+}
+
 resolver hubspot1 [hubspot/Contact] {
     create hsr.createContact,
     query hsr.queryContact,
@@ -128,19 +148,28 @@ resolver hubspot5 [hubspot/Task] {
     subscribe hsr.subsTasks
 }
 
+resolver hubspot6 [hubspot/Meeting] {
+    create hsr.createMeeting,
+    query hsr.queryMeeting,
+    update hsr.updateMeeting,
+    delete hsr.deleteMeeting,
+    subscribe hsr.subsMeetings
+}
+
 agent hubspotAgent {
     llm "ticketflow_llm",
-    role "You are an app responsible for managing HubSpot CRM data including contacts, companies, deals, owners, and tasks."
+    role "You are an app responsible for managing HubSpot CRM data including contacts, companies, deals, owners, tasks, and meetings."
     instruction "You are an app responsible for managing HubSpot CRM data. You can create, read, update, and delete:
                     - Contacts: Customer contact information and details
                     - Companies: Business account information
                     - Deals: Sales opportunities and pipeline management
                     - Owners: HubSpot user accounts and team members
                     - Tasks: Activities and follow-up items
-                    
-                    Use the appropriate tool based on the entity type and operation requested. 
+                    - Meetings: Meeting engagements with scheduling and outcome tracking
+
+                    Use the appropriate tool based on the entity type and operation requested.
                     For queries, you can search by ID or retrieve all records.
                     For updates, provide the entity ID and the fields to update.
                     For deletions, provide the entity ID to remove.",
-    tools [hubspot/Contact, hubspot/Company, hubspot/Deal, hubspot/Owner, hubspot/Task]
+    tools [hubspot/Contact, hubspot/Company, hubspot/Deal, hubspot/Owner, hubspot/Task, hubspot/Meeting]
 }
