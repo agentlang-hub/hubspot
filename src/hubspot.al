@@ -102,10 +102,35 @@ entity Meeting {
     meeting_outcome String @optional,
     activity_type String @optional,
     attachment_ids String @optional,
+    associated_contacts String @optional,
+    associated_companies String @optional,
+    associated_deals String @optional,
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
     archived Boolean @optional
+}
+
+entity MeetingAssociation {
+    id String @id @default(uuid()),
+    meeting_id String,
+    to_object_type String,
+    to_object_id String,
+    association_type_id Int @optional
+}
+
+entity MeetingDisassociation {
+    id String @id @default(uuid()),
+    meeting_id String,
+    to_object_type String,
+    to_object_id String,
+    association_type_id Int @optional
+}
+
+entity MeetingAssociationQuery {
+    id String @id @default(uuid()),
+    meeting_id String,
+    to_object_type String
 }
 
 resolver hubspot1 [hubspot/Contact] {
@@ -156,9 +181,21 @@ resolver hubspot6 [hubspot/Meeting] {
     subscribe hsr.subsMeetings
 }
 
+resolver hubspot7 [hubspot/MeetingAssociation] {
+    create hsr.associateMeeting
+}
+
+resolver hubspot8 [hubspot/MeetingDisassociation] {
+    create hsr.disassociateMeeting
+}
+
+resolver hubspot9 [hubspot/MeetingAssociationQuery] {
+    query hsr.getMeetingAssociationsResolver
+}
+
 agent hubspotAgent {
     llm "ticketflow_llm",
-    role "You are an app responsible for managing HubSpot CRM data including contacts, companies, deals, owners, tasks, and meetings."
+    role "You are an app responsible for managing HubSpot CRM data including contacts, companies, deals, owners, tasks, and meetings with full association support."
     instruction "You are an app responsible for managing HubSpot CRM data. You can create, read, update, and delete:
                     - Contacts: Customer contact information and details
                     - Companies: Business account information
@@ -167,9 +204,15 @@ agent hubspotAgent {
                     - Tasks: Activities and follow-up items
                     - Meetings: Meeting engagements with scheduling and outcome tracking
 
+                    For meetings, you can also manage associations:
+                    - When creating meetings, you can associate them with contacts, companies, or deals by providing comma-separated IDs in associated_contacts, associated_companies, or associated_deals fields
+                    - Use MeetingAssociation to associate an existing meeting with contacts, companies, or deals
+                    - Use MeetingDisassociation to remove associations
+                    - Use MeetingAssociationQuery to query existing associations
+
                     Use the appropriate tool based on the entity type and operation requested.
                     For queries, you can search by ID or retrieve all records.
                     For updates, provide the entity ID and the fields to update.
                     For deletions, provide the entity ID to remove.",
-    tools [hubspot/Contact, hubspot/Company, hubspot/Deal, hubspot/Owner, hubspot/Task, hubspot/Meeting]
+    tools [hubspot/Contact, hubspot/Company, hubspot/Deal, hubspot/Owner, hubspot/Task, hubspot/Meeting, hubspot/MeetingAssociation, hubspot/MeetingDisassociation, hubspot/MeetingAssociationQuery]
 }

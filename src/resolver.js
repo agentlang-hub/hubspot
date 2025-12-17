@@ -140,6 +140,15 @@ const makeDeleteRequest = async (endpoint) => {
   return await makeRequest(endpoint, { method: "DELETE" });
 };
 
+const makePutRequest = async (endpoint, body = null) => {
+  console.log(`HUBSPOT RESOLVER: Putting to HubSpot: ${endpoint}\n`);
+  const options = { method: "PUT" };
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+  return await makeRequest(endpoint, options);
+};
+
 // Contact functions
 export const createContact = async (env, attributes) => {
   const data = {
@@ -749,6 +758,183 @@ export async function subsTasks(resolver) {
   }, intervalMs);
 }
 
+// Association helper functions
+// Standard HubSpot association type IDs for meetings
+const ASSOCIATION_TYPES = {
+  MEETING_TO_CONTACT: 200,
+  CONTACT_TO_MEETING: 201,
+  MEETING_TO_COMPANY: 202,
+  COMPANY_TO_MEETING: 203,
+  MEETING_TO_DEAL: 206,
+  DEAL_TO_MEETING: 207,
+};
+
+/**
+ * Create an association between a meeting and another object
+ * @param {string} meetingId - The meeting ID
+ * @param {string} toObjectType - The target object type (contacts, companies, deals)
+ * @param {string} toObjectId - The target object ID
+ * @param {number} associationTypeId - The association type ID (optional, will use default if not provided)
+ */
+const createMeetingAssociation = async (
+  meetingId,
+  toObjectType,
+  toObjectId,
+  associationTypeId = null,
+) => {
+  // Determine the association type ID if not provided
+  let typeId = associationTypeId;
+  if (!typeId) {
+    switch (toObjectType) {
+      case "contacts":
+        typeId = ASSOCIATION_TYPES.MEETING_TO_CONTACT;
+        break;
+      case "companies":
+        typeId = ASSOCIATION_TYPES.MEETING_TO_COMPANY;
+        break;
+      case "deals":
+        typeId = ASSOCIATION_TYPES.MEETING_TO_DEAL;
+        break;
+      default:
+        throw new Error(`Unknown object type for association: ${toObjectType}`);
+    }
+  }
+
+  const endpoint = `/crm/v3/objects/meetings/${meetingId}/associations/${toObjectType}/${toObjectId}/${typeId}`;
+
+  try {
+    await makePutRequest(endpoint);
+    console.log(
+      `HUBSPOT RESOLVER: Successfully created association: Meeting ${meetingId} -> ${toObjectType} ${toObjectId}`,
+    );
+    return { result: "success" };
+  } catch (error) {
+    console.error(
+      `HUBSPOT RESOLVER: Failed to create association: ${error.message}`,
+    );
+    throw error;
+  }
+};
+
+/**
+ * Create multiple associations for a meeting
+ * @param {string} meetingId - The meeting ID
+ * @param {Object} associations - Object with arrays of IDs for contacts, companies, deals
+ * Example: { contacts: ["123", "456"], companies: ["789"], deals: ["012"] }
+ */
+const createMeetingAssociations = async (meetingId, associations) => {
+  const results = [];
+
+  if (associations.contacts && Array.isArray(associations.contacts)) {
+    for (const contactId of associations.contacts) {
+      try {
+        await createMeetingAssociation(meetingId, "contacts", contactId);
+        results.push({ type: "contact", id: contactId, status: "success" });
+      } catch (error) {
+        results.push({
+          type: "contact",
+          id: contactId,
+          status: "error",
+          message: error.message,
+        });
+      }
+    }
+  }
+
+  if (associations.companies && Array.isArray(associations.companies)) {
+    for (const companyId of associations.companies) {
+      try {
+        await createMeetingAssociation(meetingId, "companies", companyId);
+        results.push({ type: "company", id: companyId, status: "success" });
+      } catch (error) {
+        results.push({
+          type: "company",
+          id: companyId,
+          status: "error",
+          message: error.message,
+        });
+      }
+    }
+  }
+
+  if (associations.deals && Array.isArray(associations.deals)) {
+    for (const dealId of associations.deals) {
+      try {
+        await createMeetingAssociation(meetingId, "deals", dealId);
+        results.push({ type: "deal", id: dealId, status: "success" });
+      } catch (error) {
+        results.push({
+          type: "deal",
+          id: dealId,
+          status: "error",
+          message: error.message,
+        });
+      }
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Remove an association between a meeting and another object
+ */
+const removeMeetingAssociation = async (
+  meetingId,
+  toObjectType,
+  toObjectId,
+  associationTypeId = null,
+) => {
+  let typeId = associationTypeId;
+  if (!typeId) {
+    switch (toObjectType) {
+      case "contacts":
+        typeId = ASSOCIATION_TYPES.MEETING_TO_CONTACT;
+        break;
+      case "companies":
+        typeId = ASSOCIATION_TYPES.MEETING_TO_COMPANY;
+        break;
+      case "deals":
+        typeId = ASSOCIATION_TYPES.MEETING_TO_DEAL;
+        break;
+      default:
+        throw new Error(`Unknown object type for association: ${toObjectType}`);
+    }
+  }
+
+  const endpoint = `/crm/v3/objects/meetings/${meetingId}/associations/${toObjectType}/${toObjectId}/${typeId}`;
+
+  try {
+    await makeDeleteRequest(endpoint);
+    console.log(
+      `HUBSPOT RESOLVER: Successfully removed association: Meeting ${meetingId} -> ${toObjectType} ${toObjectId}`,
+    );
+    return { result: "success" };
+  } catch (error) {
+    console.error(
+      `HUBSPOT RESOLVER: Failed to remove association: ${error.message}`,
+    );
+    throw error;
+  }
+};
+
+/**
+ * Get all associations for a meeting
+ */
+const getMeetingAssociations = async (meetingId, toObjectType) => {
+  const endpoint = `/crm/v3/objects/meetings/${meetingId}/associations/${toObjectType}`;
+
+  try {
+    const result = await makeGetRequest(endpoint);
+    return result;
+  } catch (error) {
+    console.error(
+      `HUBSPOT RESOLVER: Failed to get associations: ${error.message}`,
+    );
+    throw error;
+  }
+};
+
 // Meeting functions
 export const createMeeting = async (env, attributes) => {
   const data = {
@@ -773,8 +959,97 @@ export const createMeeting = async (env, attributes) => {
   };
 
   try {
+    // Handle associations if provided - build the associations array using HubSpot's native format
+    const associatedContacts = attributes.attributes.get("associated_contacts");
+    const associatedCompanies = attributes.attributes.get(
+      "associated_companies",
+    );
+    const associatedDeals = attributes.attributes.get("associated_deals");
+
+    const associations = [];
+
+    // Process contacts associations
+    if (associatedContacts) {
+      const contactIds =
+        typeof associatedContacts === "string"
+          ? associatedContacts.split(",").map((id) => id.trim())
+          : Array.isArray(associatedContacts)
+            ? associatedContacts
+            : [associatedContacts];
+
+      contactIds.forEach((contactId) => {
+        associations.push({
+          to: { id: contactId },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: ASSOCIATION_TYPES.MEETING_TO_CONTACT,
+            },
+          ],
+        });
+      });
+    }
+
+    // Process companies associations
+    if (associatedCompanies) {
+      const companyIds =
+        typeof associatedCompanies === "string"
+          ? associatedCompanies.split(",").map((id) => id.trim())
+          : Array.isArray(associatedCompanies)
+            ? associatedCompanies
+            : [associatedCompanies];
+
+      companyIds.forEach((companyId) => {
+        associations.push({
+          to: { id: companyId },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: ASSOCIATION_TYPES.MEETING_TO_COMPANY,
+            },
+          ],
+        });
+      });
+    }
+
+    // Process deals associations
+    if (associatedDeals) {
+      const dealIds =
+        typeof associatedDeals === "string"
+          ? associatedDeals.split(",").map((id) => id.trim())
+          : Array.isArray(associatedDeals)
+            ? associatedDeals
+            : [associatedDeals];
+
+      dealIds.forEach((dealId) => {
+        associations.push({
+          to: { id: dealId },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: ASSOCIATION_TYPES.MEETING_TO_DEAL,
+            },
+          ],
+        });
+      });
+    }
+
+    // Add associations array to the request if any associations were specified
+    if (associations.length > 0) {
+      data.associations = associations;
+      console.log(
+        `HUBSPOT RESOLVER: Creating meeting with ${associations.length} associations`,
+      );
+    }
+
     const result = await makePostRequest("/crm/v3/objects/meetings", data);
-    return { result: "success", id: result.id };
+    const meetingId = result.id;
+
+    console.log(
+      `HUBSPOT RESOLVER: Successfully created meeting ${meetingId}${associations.length > 0 ? ` with ${associations.length} associations` : ""}`,
+    );
+
+    return { result: "success", id: meetingId };
   } catch (error) {
     console.error(`HUBSPOT RESOLVER: Failed to create meeting: ${error}`);
     return { result: "error", message: error.message };
@@ -873,3 +1148,82 @@ export async function subsMeetings(resolver) {
     await handleSubsMeetings(resolver);
   }, intervalMs);
 }
+
+// Exported association management functions
+export const associateMeeting = async (env, attributes) => {
+  const meetingId = attributes.attributes.get("meeting_id");
+  const toObjectType = attributes.attributes.get("to_object_type"); // contacts, companies, or deals
+  const toObjectId = attributes.attributes.get("to_object_id");
+  const associationTypeId = attributes.attributes.get("association_type_id");
+
+  if (!meetingId || !toObjectType || !toObjectId) {
+    return {
+      result: "error",
+      message:
+        "meeting_id, to_object_type, and to_object_id are required for association",
+    };
+  }
+
+  try {
+    await createMeetingAssociation(
+      meetingId,
+      toObjectType,
+      toObjectId,
+      associationTypeId,
+    );
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to associate meeting: ${error}`);
+    return { result: "error", message: error.message };
+  }
+};
+
+export const disassociateMeeting = async (env, attributes) => {
+  const meetingId = attributes.attributes.get("meeting_id");
+  const toObjectType = attributes.attributes.get("to_object_type");
+  const toObjectId = attributes.attributes.get("to_object_id");
+  const associationTypeId = attributes.attributes.get("association_type_id");
+
+  if (!meetingId || !toObjectType || !toObjectId) {
+    return {
+      result: "error",
+      message:
+        "meeting_id, to_object_type, and to_object_id are required for disassociation",
+    };
+  }
+
+  try {
+    await removeMeetingAssociation(
+      meetingId,
+      toObjectType,
+      toObjectId,
+      associationTypeId,
+    );
+    return { result: "success" };
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to disassociate meeting: ${error}`);
+    return { result: "error", message: error.message };
+  }
+};
+
+export const getMeetingAssociationsResolver = async (env, attributes) => {
+  const meetingId = attributes.attributes.get("meeting_id");
+  const toObjectType = attributes.attributes.get("to_object_type"); // contacts, companies, or deals
+
+  if (!meetingId || !toObjectType) {
+    return {
+      result: "error",
+      message: "meeting_id and to_object_type are required",
+    };
+  }
+
+  try {
+    const associations = await getMeetingAssociations(meetingId, toObjectType);
+    return { result: "success", data: associations };
+  } catch (error) {
+    console.error(
+      `HUBSPOT RESOLVER: Failed to get meeting associations: ${error}`,
+    );
+    return { result: "error", message: error.message };
+  }
+};
