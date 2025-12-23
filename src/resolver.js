@@ -1001,26 +1001,52 @@ const getMeetingAssociations = async (meetingId, toObjectType) => {
 
 // Meeting functions
 export const createMeeting = async (env, attributes) => {
-  const data = {
-    properties: {
-      hs_timestamp: attributes.attributes.get("timestamp"),
-      hs_meeting_title: attributes.attributes.get("meeting_title"),
-      hubspot_owner_id: attributes.attributes.get("owner"),
-      hs_meeting_body: attributes.attributes.get("meeting_body"),
-      hs_internal_meeting_notes: attributes.attributes.get(
-        "internal_meeting_notes",
-      ),
-      hs_meeting_external_url: attributes.attributes.get(
-        "meeting_external_url",
-      ),
-      hs_meeting_location: attributes.attributes.get("meeting_location"),
-      hs_meeting_start_time: attributes.attributes.get("meeting_start_time"),
-      hs_meeting_end_time: attributes.attributes.get("meeting_end_time"),
-      hs_meeting_outcome: attributes.attributes.get("meeting_outcome"),
-      hs_activity_type: attributes.attributes.get("activity_type"),
-      hs_attachment_ids: attributes.attributes.get("attachment_ids"),
-    },
+  // Build properties object, filtering out undefined/null values
+  const rawProperties = {
+    hs_timestamp: attributes.attributes.get("timestamp"),
+    hs_meeting_title: attributes.attributes.get("meeting_title"),
+    hubspot_owner_id: attributes.attributes.get("owner"),
+    hs_meeting_body: attributes.attributes.get("meeting_body"),
+    hs_internal_meeting_notes: attributes.attributes.get(
+      "internal_meeting_notes",
+    ),
+    hs_meeting_external_url: attributes.attributes.get(
+      "meeting_external_url",
+    ),
+    hs_meeting_location: attributes.attributes.get("meeting_location"),
+    hs_meeting_start_time: attributes.attributes.get("meeting_start_time"),
+    hs_meeting_end_time: attributes.attributes.get("meeting_end_time"),
+    hs_meeting_outcome: attributes.attributes.get("meeting_outcome"),
+    hs_activity_type: attributes.attributes.get("activity_type"),
+    hs_attachment_ids: attributes.attributes.get("attachment_ids"),
   };
+
+  // Filter out undefined and null values
+  const properties = Object.fromEntries(
+    Object.entries(rawProperties).filter(([_, value]) => value != null)
+  );
+
+  const data = { properties };
+
+  // Validate required fields for HubSpot UI visibility
+  const requiredFields = {
+    hs_timestamp: properties.hs_timestamp,
+    hs_meeting_title: properties.hs_meeting_title,
+    hs_meeting_outcome: properties.hs_meeting_outcome,
+    hs_meeting_start_time: properties.hs_meeting_start_time,
+    hs_meeting_end_time: properties.hs_meeting_end_time,
+    hubspot_owner_id: properties.hubspot_owner_id,
+  };
+
+  const missingFields = Object.entries(requiredFields)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingFields.length > 0) {
+    const error = `Missing required fields for HubSpot UI visibility: ${missingFields.join(", ")}`;
+    console.error("HUBSPOT RESOLVER:", error);
+    return { result: "error", message: error };
+  }
 
   try {
     // Handle associations if provided - build the associations array using HubSpot's native format
@@ -1031,12 +1057,10 @@ export const createMeeting = async (env, attributes) => {
     const associatedDeals = attributes.attributes.get("associated_deals");
 
     console.log("HUBSPOT RESOLVER: Meeting creation attributes:");
+    console.log("  - Properties being sent:", JSON.stringify(properties, null, 2));
     console.log("  - associated_contacts:", associatedContacts);
     console.log("  - associated_companies:", associatedCompanies);
     console.log("  - associated_deals:", associatedDeals);
-    console.log("  - meeting_title:", attributes.attributes.get("meeting_title"));
-    console.log("  - meeting_body:", attributes.attributes.get("meeting_body"));
-    console.log("  - timestamp:", attributes.attributes.get("timestamp"));
 
     const associations = [];
 
