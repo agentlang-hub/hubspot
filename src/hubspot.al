@@ -20,7 +20,8 @@ entity Contact {
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
-    archived Boolean @optional
+    archived Boolean @optional,
+    url String @optional
 }
 
 entity Company {
