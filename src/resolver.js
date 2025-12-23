@@ -1030,6 +1030,14 @@ export const createMeeting = async (env, attributes) => {
     );
     const associatedDeals = attributes.attributes.get("associated_deals");
 
+    console.log("HUBSPOT RESOLVER: Meeting creation attributes:");
+    console.log("  - associated_contacts:", associatedContacts);
+    console.log("  - associated_companies:", associatedCompanies);
+    console.log("  - associated_deals:", associatedDeals);
+    console.log("  - meeting_title:", attributes.attributes.get("meeting_title"));
+    console.log("  - meeting_body:", attributes.attributes.get("meeting_body"));
+    console.log("  - timestamp:", attributes.attributes.get("timestamp"));
+
     const associations = [];
 
     // Process contacts associations
