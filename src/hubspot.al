@@ -16,6 +16,7 @@ entity Contact {
     salutation String @optional,
     mobile_phone_number String @optional,
     website_url String @optional,
+    url String @optional,
     owner String @optional,
     properties Map @optional,
     createdAt String @optional,

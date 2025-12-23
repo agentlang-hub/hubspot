@@ -7,6 +7,175 @@ function asInstance(entity, entityType) {
   return makeInstance("hubspot", entityType, instanceMap);
 }
 
+// Field mappings for each entity type (AgentLang field -> HubSpot property)
+const FIELD_MAPPINGS = {
+  Contact: {
+    email: "email",
+    first_name: "firstname",
+    last_name: "lastname",
+    job_title: "jobtitle",
+    mobile_phone_number: "mobilephone",
+    website_url: "website",
+    lead_status: "hs_lead_status",
+    lifecycle_stage: "lifecyclestage",
+    owner: "hubspot_owner_id",
+    last_contacted: "lastcontacted",
+    last_activity_date: "lastactivitydate",
+    salutation: "salutation",
+  },
+  Company: {
+    name: "name",
+    industry: "industry",
+    description: "description",
+    country: "country",
+    city: "city",
+    lead_status: "hs_lead_status",
+    lifecycle_stage: "lifecyclestage",
+    owner: "hubspot_owner_id",
+    year_founded: "founded_year",
+    website_url: "website",
+  },
+  Deal: {
+    deal_name: "dealname",
+    deal_stage: "dealstage",
+    amount: "amount",
+    close_date: "closedate",
+    deal_type: "dealtype",
+    description: "description",
+    owner: "hubspot_owner_id",
+    pipeline: "pipeline",
+    priority: "priority",
+  },
+  Task: {
+    task_type: "hs_task_type",
+    title: "hs_task_subject",
+    priority: "hs_task_priority",
+    assigned_to: "hs_task_assigned_to",
+    due_date: "hs_task_due_date",
+    status: "hs_task_status",
+    description: "hs_task_body",
+    owner: "hubspot_owner_id",
+  },
+  Meeting: {
+    timestamp: "hs_timestamp",
+    meeting_title: "hs_meeting_title",
+    owner: "hubspot_owner_id",
+    meeting_body: "hs_meeting_body",
+    internal_meeting_notes: "hs_internal_meeting_notes",
+    meeting_external_url: "hs_meeting_external_url",
+    meeting_location: "hs_meeting_location",
+    meeting_start_time: "hs_meeting_start_time",
+    meeting_end_time: "hs_meeting_end_time",
+    meeting_outcome: "hs_meeting_outcome",
+    activity_type: "hs_activity_type",
+  },
+  Owner: {
+    email: "email",
+    first_name: "firstName",
+    last_name: "lastName",
+    user_id: "userId",
+  },
+};
+
+/**
+ * Generic query function that supports filtering by properties using HubSpot Search API
+ * @param {string} objectType - The HubSpot object type (contacts, companies, deals, tasks, meetings, owners)
+ * @param {string} entityType - The AgentLang entity type (Contact, Company, Deal, etc.)
+ * @param {object} attrs - Query attributes from AgentLang
+ * @returns {Array} Array of entity instances
+ */
+async function queryWithFilters(objectType, entityType, attrs) {
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
+
+  console.log(
+    `HUBSPOT RESOLVER: Querying ${objectType}: ${id || "with filters"}\n`,
+  );
+  console.log(
+    `HUBSPOT RESOLVER: Query attributes:`,
+    attrs.queryAttributeValues,
+  );
+
+  try {
+    let inst;
+
+    // Case 1: Query by ID
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/objects/${objectType}/${id}`);
+      if (!(inst instanceof Array)) {
+        inst = [inst];
+      }
+    }
+    // Case 2: Query by property filters or get all
+    else {
+      const filters = [];
+      const fieldMapping = FIELD_MAPPINGS[entityType] || {};
+
+      // Build filters from query attributes
+      if (attrs.queryAttributeValues) {
+        for (const [key, value] of attrs.queryAttributeValues.entries()) {
+          // Skip internal fields
+          if (key.startsWith("__")) continue;
+
+          const hubspotProperty = fieldMapping[key] || key;
+
+          if (value !== null && value !== undefined) {
+            console.log(
+              `HUBSPOT RESOLVER: Adding filter for ${key} (${hubspotProperty}) = ${value}`,
+            );
+            filters.push({
+              propertyName: hubspotProperty,
+              operator: "EQ",
+              value: String(value),
+            });
+          }
+        }
+      }
+
+      // If we have filters, use Search API
+      if (filters.length > 0) {
+        const searchBody = {
+          filterGroups: [
+            {
+              filters: filters,
+            },
+          ],
+          limit: 100,
+        };
+
+        console.log(
+          `HUBSPOT RESOLVER: Using Search API for ${objectType} with filters:`,
+          JSON.stringify(searchBody, null, 2),
+        );
+        const result = await makePostRequest(
+          `/crm/v3/objects/${objectType}/search`,
+          searchBody,
+        );
+        inst = result.results || [];
+      }
+      // No filters - get all records
+      else {
+        console.log(`HUBSPOT RESOLVER: No filters, fetching all ${objectType}`);
+        const result = await makeGetRequest(`/crm/v3/objects/${objectType}`);
+        inst = result.results || [];
+      }
+    }
+
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+
+    console.log(`HUBSPOT RESOLVER: Found ${inst.length} ${objectType}`);
+
+    return inst.map((data) => {
+      return asInstance(data, entityType);
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query ${objectType}: ${error}`);
+    return { result: "error", message: error.message };
+  }
+}
+
 const getResponseBody = async (response) => {
   try {
     try {
@@ -178,28 +347,7 @@ export const createContact = async (env, attributes) => {
 };
 
 export const queryContact = async (env, attrs) => {
-  const id =
-    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
-
-  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-  try {
-    let inst;
-    if (id) {
-      inst = await makeGetRequest(`/crm/v3/objects/contacts/${id}`);
-    } else {
-      inst = await makeGetRequest("/crm/v3/objects/contacts");
-      inst = inst.results;
-    }
-    if (!(inst instanceof Array)) {
-      inst = [inst];
-    }
-    return inst.map((data) => {
-      return asInstance(data, "Contact");
-    });
-  } catch (error) {
-    console.error(`HUBSPOT RESOLVER: Failed to query contacts: ${error}`);
-    return { result: "error", message: error.message };
-  }
+  return await queryWithFilters("contacts", "Contact", attrs);
 };
 
 export const updateContact = async (env, attributes, newAttrs) => {
@@ -279,28 +427,7 @@ export const createCompany = async (env, attributes) => {
 };
 
 export const queryCompany = async (env, attrs) => {
-  const id =
-    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
-
-  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-  try {
-    let inst;
-    if (id) {
-      inst = await makeGetRequest(`/crm/v3/objects/companies/${id}`);
-    } else {
-      inst = await makeGetRequest("/crm/v3/objects/companies");
-      inst = inst.results;
-    }
-    if (!(inst instanceof Array)) {
-      inst = [inst];
-    }
-    return inst.map((data) => {
-      return asInstance(data, "Company");
-    });
-  } catch (error) {
-    console.error(`HUBSPOT RESOLVER: Failed to query companies: ${error}`);
-    return { result: "error", message: error.message };
-  }
+  return await queryWithFilters("companies", "Company", attrs);
 };
 
 export const updateCompany = async (env, attributes, newAttrs) => {
@@ -377,28 +504,7 @@ export const createDeal = async (env, attributes) => {
 };
 
 export const queryDeal = async (env, attrs) => {
-  const id =
-    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
-
-  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-  try {
-    let inst;
-    if (id) {
-      inst = await makeGetRequest(`/crm/v3/objects/deals/${id}`);
-    } else {
-      inst = await makeGetRequest("/crm/v3/objects/deals");
-      inst = inst.results;
-    }
-    if (!(inst instanceof Array)) {
-      inst = [inst];
-    }
-    return inst.map((data) => {
-      return asInstance(data, "Deal");
-    });
-  } catch (error) {
-    console.error(`HUBSPOT RESOLVER: Failed to query deals: ${error}`);
-    return { result: "error", message: error.message };
-  }
+  return await queryWithFilters("deals", "Deal", attrs);
 };
 
 export const updateDeal = async (env, attributes, newAttrs) => {
@@ -463,28 +569,7 @@ export const createOwner = async (env, attributes) => {
 };
 
 export const queryOwner = async (env, attrs) => {
-  const id =
-    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
-
-  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-  try {
-    let inst;
-    if (id) {
-      inst = await makeGetRequest(`/crm/v3/owners/${id}`);
-    } else {
-      inst = await makeGetRequest("/crm/v3/owners");
-      inst = inst.results;
-    }
-    if (!(inst instanceof Array)) {
-      inst = [inst];
-    }
-    return inst.map((data) => {
-      return asInstance(data, "Owner");
-    });
-  } catch (error) {
-    console.error(`HUBSPOT RESOLVER: Failed to query owners: ${error}`);
-    return { result: "error", message: error.message };
-  }
+  return await queryWithFilters("owners", "Owner", attrs);
 };
 
 export const updateOwner = async (env, attributes, newAttrs) => {
@@ -548,28 +633,7 @@ export const createTask = async (env, attributes) => {
 };
 
 export const queryTask = async (env, attrs) => {
-  const id =
-    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
-
-  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-  try {
-    let inst;
-    if (id) {
-      inst = await makeGetRequest(`/crm/v3/objects/tasks/${id}`);
-    } else {
-      inst = await makeGetRequest("/crm/v3/objects/tasks");
-      inst = inst.results;
-    }
-    if (!(inst instanceof Array)) {
-      inst = [inst];
-    }
-    return inst.map((data) => {
-      return asInstance(data, "Task");
-    });
-  } catch (error) {
-    console.error(`HUBSPOT RESOLVER: Failed to query tasks: ${error}`);
-    return { result: "error", message: error.message };
-  }
+  return await queryWithFilters("tasks", "Task", attrs);
 };
 
 export const updateTask = async (env, attributes, newAttrs) => {
@@ -745,7 +809,7 @@ export async function subsOwners(resolver) {
   }, intervalMs);
 }
 
-export async function subsTasks(resolver) {
+export async function subtasks(resolver) {
   await handleSubsTasks(resolver);
   const intervalMinutes =
     parseInt(getLocalEnv("HUBSPOT_POLL_INTERVAL_MINUTES")) || 15;
@@ -1057,28 +1121,7 @@ export const createMeeting = async (env, attributes) => {
 };
 
 export const queryMeeting = async (env, attrs) => {
-  const id =
-    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
-
-  console.log(`HUBSPOT RESOLVER: Querying HubSpot: ${id}\n`);
-  try {
-    let inst;
-    if (id) {
-      inst = await makeGetRequest(`/crm/v3/objects/meetings/${id}`);
-    } else {
-      inst = await makeGetRequest("/crm/v3/objects/meetings");
-      inst = inst.results;
-    }
-    if (!(inst instanceof Array)) {
-      inst = [inst];
-    }
-    return inst.map((data) => {
-      return asInstance(data, "Meeting");
-    });
-  } catch (error) {
-    console.error(`HUBSPOT RESOLVER: Failed to query meetings: ${error}`);
-    return { result: "error", message: error.message };
-  }
+  return await queryWithFilters("meetings", "Meeting", attrs);
 };
 
 export const updateMeeting = async (env, attributes, newAttrs) => {
