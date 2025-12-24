@@ -569,7 +569,62 @@ export const createOwner = async (env, attributes) => {
 };
 
 export const queryOwner = async (env, attrs) => {
-  return await queryWithFilters("owners", "Owner", attrs);
+  const id =
+    attrs.queryAttributeValues?.get("__path__")?.split("/")?.pop() ?? null;
+
+  console.log(
+    `HUBSPOT RESOLVER: Querying owners: ${id || "with filters"}\n`,
+  );
+  console.log(
+    `HUBSPOT RESOLVER: Query attributes:`,
+    attrs.queryAttributeValues,
+  );
+
+  try {
+    let inst;
+
+    // Case 1: Query by ID
+    if (id) {
+      inst = await makeGetRequest(`/crm/v3/owners/${id}`);
+      if (!(inst instanceof Array)) {
+        inst = [inst];
+      }
+    }
+    // Case 2: Query by email or get all
+    else {
+      const email = attrs.queryAttributeValues?.get("email");
+
+      if (email) {
+        // Get all owners and filter by email client-side
+        // HubSpot owners API doesn't support search filters like contacts
+        console.log(`HUBSPOT RESOLVER: Fetching all owners to filter by email: ${email}`);
+        const result = await makeGetRequest(`/crm/v3/owners/`);
+        const allOwners = result.results || [];
+
+        // Filter by email
+        inst = allOwners.filter(owner => owner.email === email);
+        console.log(`HUBSPOT RESOLVER: Found ${inst.length} owners matching email ${email}`);
+      } else {
+        // No filters - get all owners
+        console.log(`HUBSPOT RESOLVER: Fetching all owners`);
+        const result = await makeGetRequest(`/crm/v3/owners/`);
+        inst = result.results || [];
+      }
+    }
+
+    if (!(inst instanceof Array)) {
+      inst = [inst];
+    }
+
+    console.log(`HUBSPOT RESOLVER: Found ${inst.length} owners`);
+
+    return inst.map((data) => {
+      return asInstance(data, "Owner");
+    });
+  } catch (error) {
+    console.error(`HUBSPOT RESOLVER: Failed to query owners: ${error}`);
+    return { result: "error", message: error.message };
+  }
 };
 
 export const updateOwner = async (env, attributes, newAttrs) => {
