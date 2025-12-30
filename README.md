@@ -1,4 +1,4 @@
-# HubSpot Studio Resolver
+# HubSpot Resolver
 
 Browser-compatible HubSpot resolver for AgentLang with Skypack CDN dependency management.
 
