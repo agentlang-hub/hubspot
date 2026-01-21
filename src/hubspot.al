@@ -29,6 +29,7 @@ entity Contact {
     mobile_phone_number String @optional,
     website_url String @optional,
     owner String @optional,
+    company String @optional,
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
@@ -40,19 +41,22 @@ entity Company {
     id String @id,
     created_date String @optional,
     name String @optional,
+    domain String @optional,
     industry String @optional,
     description String @optional,
     country String @optional,
     city String @optional,
     lead_status String @optional,
     lifecycle_stage String @optional,
+    ai_lead_score Int @optional,
     owner String @optional,
     year_founded String @optional,
     website_url String @optional,
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
-    archived Boolean @optional
+    archived Boolean @optional,
+    url String @optional
 }
 
 entity Deal {
@@ -67,6 +71,8 @@ entity Deal {
     owner String @optional,
     pipeline String @optional,
     priority String @optional,
+    associated_company String @optional,
+    associated_contacts String[] @optional,
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
@@ -87,14 +93,33 @@ entity Owner {
 entity Task {
     id String @id @default(uuid()),
     created_date String @optional,
-    task_type String @optional,
-    title String @optional,
-    priority String @optional,
-    assigned_to String @optional,
-    due_date String @optional,
-    status String @optional,
-    description String @optional,
+    hs_task_type String @optional,
+    hs_task_subject String @optional,
+    hs_task_priority String @optional,
+    hs_timestamp String @optional,
+    hs_task_status String @optional,
+    hs_task_body String @optional,
+    hubspot_owner_id String @optional,
+    hs_task_reminders String @optional,
+    associated_contacts String[] @optional,
+    associated_company String @optional,
+    associated_deal String @optional,
+    properties Map @optional,
+    createdAt String @optional,
+    updatedAt String @optional,
+    archived Boolean @optional
+}
+
+entity Note {
+    id String @id @default(uuid()),
+    created_date String @optional,
+    timestamp String @optional,
+    note_body String @optional,
     owner String @optional,
+    associated_contact String @optional,
+    associated_contacts String[] @optional,
+    associated_company String @optional,
+    associated_deal String @optional,
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
@@ -116,9 +141,9 @@ entity Meeting {
     meeting_outcome String @optional,
     activity_type String @optional,
     attachment_ids String @optional,
-    associated_contacts String @optional,
-    associated_companies String @optional,
-    associated_deals String @optional,
+    associated_contacts String[] @optional,
+    associated_companies String[] @optional,
+    associated_deals String[] @optional,
     properties Map @optional,
     createdAt String @optional,
     updatedAt String @optional,
@@ -195,27 +220,268 @@ resolver hubspot6 [hubspot/Meeting] {
     subscribe hsr.subsMeetings
 }
 
-resolver hubspot7 [hubspot/MeetingAssociation] {
+resolver hubspot7 [hubspot/Note] {
+    create hsr.createNote,
+    query hsr.queryNote,
+    update hsr.updateNote,
+    delete hsr.deleteNote,
+    subscribe hsr.subsNotes
+}
+
+resolver hubspot8 [hubspot/MeetingAssociation] {
     create hsr.associateMeeting
 }
 
-resolver hubspot8 [hubspot/MeetingDisassociation] {
+resolver hubspot9 [hubspot/MeetingDisassociation] {
     create hsr.disassociateMeeting
 }
 
-resolver hubspot9 [hubspot/MeetingAssociationQuery] {
+resolver hubspot10 [hubspot/MeetingAssociationQuery] {
     query hsr.getMeetingAssociationsResolver
+}
+
+record CRMContext {
+    existingCompanyId String @optional,
+    existingCompanyName String @optional,
+    existingContactId String @optional,
+    hasCompany Boolean @default(false),
+    hasContact Boolean @default(false)
+}
+
+event fetchCRMContext {
+    companyDomain String @optional,
+    contactEmail String @optional
+}
+
+workflow fetchCRMContext {
+    "" @as existingCompanyId;
+    "" @as existingCompanyName;
+    "" @as existingContactId;
+    false @as hasCompany;
+    false @as hasContact;
+    
+    if (fetchCRMContext.companyDomain) {
+        {Company {domain? fetchCRMContext.companyDomain}} @as companies;
+        
+        if (companies.length > 0) {
+            companies @as [comp, __];
+            comp.id @as existingCompanyId;
+            comp.name @as existingCompanyName;
+            true @as hasCompany
+        }
+    };
+    
+    if (fetchCRMContext.contactEmail) {
+        {Contact {email? fetchCRMContext.contactEmail}} @as contacts;
+        
+        if (contacts.length > 0) {
+            contacts @as [cont, __];
+            cont.id @as existingContactId;
+            true @as hasContact
+        }
+    };
+    
+    {CRMContext {
+        existingCompanyId existingCompanyId,
+        existingCompanyName existingCompanyName,
+        existingContactId existingContactId,
+        hasCompany hasCompany,
+        hasContact hasContact
+    }}
+}
+
+event upsertCompany {
+    name String,
+    domain String,
+    lifecycle_stage String @optional,
+    ai_lead_score Int @optional
+}
+
+workflow upsertCompany {
+    {Company {domain? upsertCompany.domain}} @as companies;
+    
+    if (companies.length > 0) {
+        companies @as [company, __];
+        
+        {Company {
+            id? company.id,
+            lifecycle_stage upsertCompany.lifecycle_stage,
+            ai_lead_score upsertCompany.ai_lead_score
+        }}
+    } else {
+        {Company {
+            domain upsertCompany.domain,
+            name upsertCompany.name,
+            lifecycle_stage upsertCompany.lifecycle_stage,
+            ai_lead_score upsertCompany.ai_lead_score
+        }}
+    }
+}
+
+event upsertContact {
+    email String,
+    first_name String,
+    last_name String,
+    company String @optional
+}
+
+workflow upsertContact {
+    {Contact {email? upsertContact.email}} @as contacts;
+    
+    if (contacts.length > 0) {
+        contacts @as [contact, __];
+        contact
+    } else {
+        {Contact {
+            email upsertContact.email,
+            first_name upsertContact.first_name,
+            last_name upsertContact.last_name,
+            company upsertContact.company
+        }}
+    }
+}
+
+record CRMUpdateResult {
+    companyId String @optional,
+    companyName String @optional,
+    contactId String,
+    contactEmail String,
+    dealId String @optional,
+    dealCreated Boolean @default(false),
+    noteId String,
+    taskId String
+}
+
+event updateCRMFromLead {
+    shouldCreateCompany Boolean,
+    shouldCreateContact Boolean,
+    shouldCreateDeal Boolean,
+    companyName String @optional,
+    companyDomain String @optional,
+    contactEmail String,
+    contactFirstName String,
+    contactLastName String,
+    leadStage String,
+    leadScore Int,
+    dealStage String @optional,
+    dealName String @optional,
+    reasoning String,
+    nextAction String,
+    ownerId String,
+    existingCompanyId String @optional,
+    existingContactId String @optional
+}
+
+workflow updateCRMFromLead {
+    "" @as companyId;
+    "" @as companyName;
+    
+    if (updateCRMFromLead.shouldCreateCompany) {
+        if (updateCRMFromLead.leadStage == "QUALIFIED") {
+            "salesqualifiedlead" @as lifecycle
+        } else if (updateCRMFromLead.leadStage == "ENGAGED") {
+            "marketingqualifiedlead" @as lifecycle
+        } else {
+            "lead" @as lifecycle
+        };
+        
+        {upsertCompany {
+            name updateCRMFromLead.companyName,
+            domain updateCRMFromLead.companyDomain,
+            lifecycle_stage lifecycle,
+            ai_lead_score updateCRMFromLead.leadScore
+        }} @as companyResult;
+        
+        companyResult.id @as companyId;
+        companyResult.name @as companyName
+    } else {
+        if (updateCRMFromLead.existingCompanyId) {
+            updateCRMFromLead.existingCompanyId @as companyId;
+            updateCRMFromLead.companyName @as companyName
+        }
+    };
+    
+    if (updateCRMFromLead.shouldCreateContact) {
+        {upsertContact {
+            email updateCRMFromLead.contactEmail,
+            first_name updateCRMFromLead.contactFirstName,
+            last_name updateCRMFromLead.contactLastName,
+            company companyId
+        }} @as contact
+    } else {
+        {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
+        existingContacts @as [contact, __]
+    };
+    
+    "" @as dealId;
+    false @as dealCreated;
+    
+    if (updateCRMFromLead.shouldCreateDeal) {
+        {Deal {
+            deal_name updateCRMFromLead.dealName,
+            deal_stage updateCRMFromLead.dealStage,
+            owner updateCRMFromLead.ownerId,
+            associated_company companyId,
+            associated_contacts [contact.id],
+            description "Deal created from email thread"
+        }} @as deal;
+        
+        deal.id @as dealId;
+        true @as dealCreated;
+        
+        {Note {
+            note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+            timestamp now(),
+            owner updateCRMFromLead.ownerId,
+            associated_company companyId,
+            associated_contacts [contact.id],
+            associated_deal deal.id
+        }} @as note
+    } else {
+        {Note {
+            note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+            timestamp now(),
+            owner updateCRMFromLead.ownerId,
+            associated_company companyId,
+            associated_contacts [contact.id]
+        }} @as note
+    };
+    
+    {Task {
+        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
+        hs_task_body "Lead: " + companyName + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+        hs_timestamp now() + (24 * 3600000),
+        hubspot_owner_id updateCRMFromLead.ownerId,
+        hs_task_status "NOT_STARTED",
+        hs_task_type "EMAIL",
+        hs_task_priority "MEDIUM",
+        associated_company companyId,
+        associated_contacts [contact.id],
+        associated_deal dealId
+    }} @as task;
+    
+    {CRMUpdateResult {
+        companyId companyId,
+        companyName companyName,
+        contactId contactResult.id,
+        contactEmail contactResult.email,
+        dealId dealId,
+        dealCreated dealCreated,
+        noteId note.id,
+        taskId task.id
+    }}
 }
 
 agent hubspotAgent {
     llm "ticketflow_llm",
-    role "You are an app responsible for managing HubSpot CRM data including contacts, companies, deals, owners, tasks, and meetings with full association support."
+    role "You are an app responsible for managing HubSpot CRM data including contacts, companies, deals, owners, tasks, notes, and meetings with full association support."
     instruction "You are an app responsible for managing HubSpot CRM data. You can create, read, update, and delete:
                     - Contacts: Customer contact information and details
                     - Companies: Business account information
                     - Deals: Sales opportunities and pipeline management
                     - Owners: HubSpot user accounts and team members
                     - Tasks: Activities and follow-up items
+                    - Notes: Notes attached to contacts, companies, or deals
                     - Meetings: Meeting engagements with scheduling and outcome tracking
 
                     For meetings, you can also manage associations:
@@ -228,5 +494,5 @@ agent hubspotAgent {
                     For queries, you can search by ID or retrieve all records.
                     For updates, provide the entity ID and the fields to update.
                     For deletions, provide the entity ID to remove.",
-    tools [hubspot/Contact, hubspot/Company, hubspot/Deal, hubspot/Owner, hubspot/Task, hubspot/Meeting, hubspot/MeetingAssociation, hubspot/MeetingDisassociation, hubspot/MeetingAssociationQuery]
+    tools [hubspot/Contact, hubspot/Company, hubspot/Deal, hubspot/Owner, hubspot/Task, hubspot/Note, hubspot/Meeting, hubspot/MeetingAssociation, hubspot/MeetingDisassociation, hubspot/MeetingAssociationQuery]
 }
