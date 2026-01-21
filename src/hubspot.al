@@ -400,24 +400,24 @@ event updateCRMFromLead {
 
 workflow updateCRMFromLead {
     console.log("=== HUBSPOT updateCRMFromLead START ===");
-    
+
     updateCRMFromLead.shouldCreateCompany @as flagCompany;
     updateCRMFromLead.shouldCreateContact @as flagContact;
     updateCRMFromLead.shouldCreateDeal @as flagDeal;
     updateCRMFromLead.contactEmail @as emailParam;
     updateCRMFromLead.contactFirstName @as firstNameParam;
     updateCRMFromLead.companyDomain @as domainParam;
-    
+
     console.log("FLAGS: Company=" + flagCompany + " Contact=" + flagContact + " Deal=" + flagDeal);
     console.log("CONTACT: email=" + emailParam + " firstName=" + firstNameParam);
     console.log("COMPANY: domain=" + domainParam);
-    
+
     "" @as companyId;
     "" @as companyName;
-    
+
     if (updateCRMFromLead.shouldCreateCompany) {
         console.log("🏢 HUBSPOT: Creating/updating company");
-        
+
         if (updateCRMFromLead.leadStage == "QUALIFIED") {
             "salesqualifiedlead" @as lifecycle
         } else if (updateCRMFromLead.leadStage == "ENGAGED") {
@@ -425,58 +425,72 @@ workflow updateCRMFromLead {
         } else {
             "lead" @as lifecycle
         };
-        
+
         {upsertCompany {
             name updateCRMFromLead.companyName,
             domain updateCRMFromLead.companyDomain,
             lifecycle_stage lifecycle,
             ai_lead_score updateCRMFromLead.leadScore
         }} @as company;
-        
+
         company.id @as companyId;
         company.name @as companyName;
-        
+
         console.log("🏢 HUBSPOT: Company result - ID: " + companyId + ", Name: " + companyName)
     } else {
         console.log("🏢 HUBSPOT: Skipping company creation");
-        
+
         if (updateCRMFromLead.existingCompanyId) {
             updateCRMFromLead.existingCompanyId @as companyId;
             updateCRMFromLead.companyName @as companyName;
             console.log("🏢 HUBSPOT: Using existing company ID: " + companyId)
         }
     };
-    
+
     if (updateCRMFromLead.shouldCreateContact) {
         console.log("👤 HUBSPOT: shouldCreateContact is TRUE, calling upsertContact");
         console.log("  Passing email: '" + updateCRMFromLead.contactEmail + "'");
         console.log("  Passing first_name: '" + updateCRMFromLead.contactFirstName + "'");
         console.log("  Passing last_name: '" + updateCRMFromLead.contactLastName + "'");
         console.log("  Passing companyId: '" + companyId + "'");
-        
+
         {upsertContact {
             email updateCRMFromLead.contactEmail,
             first_name updateCRMFromLead.contactFirstName,
             last_name updateCRMFromLead.contactLastName,
             company companyId
         }} @as contact;
-        
+
         console.log("👤 HUBSPOT: upsertContact returned - ID: " + contact.id + ", Email: " + contact.email)
     } else {
-        console.log("👤 HUBSPOT: shouldCreateContact is FALSE, using existing ID: " + updateCRMFromLead.existingContactId);
-        
-        {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
-        existingContacts @as [contact, __];
-        
-        console.log("👤 HUBSPOT: Fetched existing contact - ID: " + contact.id)
+        console.log("👤 HUBSPOT: shouldCreateContact is FALSE");
+
+        if (updateCRMFromLead.existingContactId) {
+            console.log("👤 HUBSPOT: Fetching existing contact ID: " + updateCRMFromLead.existingContactId);
+
+            {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
+            existingContacts @as [contact, __];
+
+            console.log("👤 HUBSPOT: Fetched existing contact - ID: " + contact.id)
+        } else {
+            console.log("⚠️  HUBSPOT: No existing contact ID provided but shouldCreateContact is false - this is an error state");
+            console.log("⚠️  HUBSPOT: Creating contact anyway with email: " + updateCRMFromLead.contactEmail);
+
+            {upsertContact {
+                email updateCRMFromLead.contactEmail,
+                first_name updateCRMFromLead.contactFirstName,
+                last_name updateCRMFromLead.contactLastName,
+                company companyId
+            }} @as contact
+        }
     };
-    
+
     "" @as dealId;
     false @as dealCreated;
-    
+
     if (updateCRMFromLead.shouldCreateDeal) {
         console.log("💼 HUBSPOT: Creating deal: " + updateCRMFromLead.dealName);
-        
+
         {Deal {
             deal_name updateCRMFromLead.dealName,
             deal_stage updateCRMFromLead.dealStage,
@@ -485,13 +499,13 @@ workflow updateCRMFromLead {
             associated_contacts [contact.id],
             description "Deal created from email thread"
         }} @as deal;
-        
+
         deal.id @as dealId;
         true @as dealCreated;
-        
+
         console.log("💼 HUBSPOT: Deal created, ID: " + dealId);
         console.log("📝 HUBSPOT: Creating deal note");
-        
+
         {Note {
             note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
             timestamp now(),
@@ -503,7 +517,7 @@ workflow updateCRMFromLead {
     } else {
         console.log("💼 HUBSPOT: Skipping deal creation");
         console.log("📝 HUBSPOT: Creating analysis note");
-        
+
         {Note {
             note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
             timestamp now(),
@@ -512,9 +526,9 @@ workflow updateCRMFromLead {
             associated_contacts [contact.id]
         }} @as note
     };
-    
+
     console.log("📋 HUBSPOT: Creating follow-up task");
-    
+
     {Task {
         hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
         hs_task_body "Lead: " + companyName + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
@@ -527,10 +541,10 @@ workflow updateCRMFromLead {
         associated_contacts [contact.id],
         associated_deal dealId
     }} @as task;
-    
+
     console.log("📋 HUBSPOT: Task created, ID: " + task.id);
     console.log("✅ HUBSPOT: CRM Update complete - Company: " + companyId + ", Contact: " + contact.id + ", Deal: " + dealId);
-    
+
     {CRMUpdateResult {
         companyId companyId,
         companyName companyName,
