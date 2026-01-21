@@ -332,28 +332,44 @@ event upsertContact {
 }
 
 workflow upsertContact {
-    console.log("👤 HUBSPOT: upsertContact called with email: " + upsertContact.email + ", name: " + upsertContact.first_name + " " + upsertContact.last_name + ", company: " + upsertContact.company);
+    console.log("👤 HUBSPOT: upsertContact called");
+    console.log("  email: '" + upsertContact.email + "'");
+    console.log("  first_name: '" + upsertContact.first_name + "'");
+    console.log("  last_name: '" + upsertContact.last_name + "'");
+    console.log("  company: '" + upsertContact.company + "'");
     
-    {Contact {email? upsertContact.email}} @as contacts;
-    
-    console.log("👤 HUBSPOT: Query returned " + contacts.length + " contacts");
-    
-    if (contacts.length > 0) {
-        contacts @as [contact, __];
-        console.log("👤 HUBSPOT: Using existing contact ID: " + contact.id);
-        contact
+    if (upsertContact.email) {
+        console.log("👤 HUBSPOT: Email provided, querying for: " + upsertContact.email);
+        
+        {Contact {email? upsertContact.email}} @as contacts;
+        
+        console.log("👤 HUBSPOT: Query returned " + contacts.length + " contacts");
+        
+        if (contacts.length > 0) {
+            contacts @as [contact, __];
+            console.log("👤 HUBSPOT: Found existing contact - ID: " + contact.id + ", Email: " + contact.email);
+            contact
+        } else {
+            console.log("👤 HUBSPOT: No existing contact found, creating new");
+            
+            {Contact {
+                email upsertContact.email,
+                first_name upsertContact.first_name,
+                last_name upsertContact.last_name,
+                company upsertContact.company
+            }} @as result;
+            
+            console.log("👤 HUBSPOT: Contact created, ID: " + result.id);
+            result
+        }
     } else {
-        console.log("👤 HUBSPOT: Creating new contact");
+        console.log("❌ HUBSPOT: No email provided, cannot upsert contact");
         
         {Contact {
-            email upsertContact.email,
+            email "",
             first_name upsertContact.first_name,
-            last_name upsertContact.last_name,
-            company upsertContact.company
-        }} @as result;
-        
-        console.log("👤 HUBSPOT: Contact created, ID: " + result.id);
-        result
+            last_name upsertContact.last_name
+        }}
     }
 }
 
@@ -432,7 +448,11 @@ workflow updateCRMFromLead {
     };
     
     if (updateCRMFromLead.shouldCreateContact) {
-        console.log("👤 HUBSPOT: Creating/updating contact");
+        console.log("👤 HUBSPOT: shouldCreateContact is TRUE, calling upsertContact");
+        console.log("  Passing email: '" + updateCRMFromLead.contactEmail + "'");
+        console.log("  Passing first_name: '" + updateCRMFromLead.contactFirstName + "'");
+        console.log("  Passing last_name: '" + updateCRMFromLead.contactLastName + "'");
+        console.log("  Passing companyId: '" + companyId + "'");
         
         {upsertContact {
             email updateCRMFromLead.contactEmail,
@@ -441,12 +461,14 @@ workflow updateCRMFromLead {
             company companyId
         }} @as contact;
         
-        console.log("👤 HUBSPOT: Contact result - ID: " + contact.id + ", Email: " + contact.email)
+        console.log("👤 HUBSPOT: upsertContact returned - ID: " + contact.id + ", Email: " + contact.email)
     } else {
-        console.log("👤 HUBSPOT: Skipping contact creation, using existing ID: " + updateCRMFromLead.existingContactId);
+        console.log("👤 HUBSPOT: shouldCreateContact is FALSE, using existing ID: " + updateCRMFromLead.existingContactId);
         
         {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
-        existingContacts @as [contact, __]
+        existingContacts @as [contact, __];
+        
+        console.log("👤 HUBSPOT: Fetched existing contact - ID: " + contact.id)
     };
     
     "" @as dealId;
