@@ -220,23 +220,15 @@ resolver hubspot6 [hubspot/Meeting] {
     subscribe hsr.subsMeetings
 }
 
-resolver hubspot7 [hubspot/Note] {
-    create hsr.createNote,
-    query hsr.queryNote,
-    update hsr.updateNote,
-    delete hsr.deleteNote,
-    subscribe hsr.subsNotes
-}
-
-resolver hubspot8 [hubspot/MeetingAssociation] {
+resolver hubspot7 [hubspot/MeetingAssociation] {
     create hsr.associateMeeting
 }
 
-resolver hubspot9 [hubspot/MeetingDisassociation] {
+resolver hubspot8 [hubspot/MeetingDisassociation] {
     create hsr.disassociateMeeting
 }
 
-resolver hubspot10 [hubspot/MeetingAssociationQuery] {
+resolver hubspot9 [hubspot/MeetingAssociationQuery] {
     query hsr.getMeetingAssociationsResolver
 }
 
