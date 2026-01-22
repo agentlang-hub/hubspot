@@ -177,6 +177,15 @@ async function queryWithFilters(objectType, entityType, attrs) {
                     // Skip internal fields
                     if (key.startsWith("__")) continue;
 
+                    // Skip 'id' field - HubSpot doesn't support filtering by id in Search API
+                    // IDs should be queried using the direct GET endpoint instead
+                    if (key === "id") {
+                        console.log(
+                            `HUBSPOT RESOLVER: Skipping 'id' filter - use direct GET /crm/v3/objects/${objectType}/{id} instead`
+                        );
+                        continue;
+                    }
+
                     const hubspotProperty = fieldMapping[key] || key;
 
                     // Skip empty string values as HubSpot rejects them
@@ -214,12 +223,24 @@ async function queryWithFilters(objectType, entityType, attrs) {
                     `HUBSPOT RESOLVER: Query returned ${inst.length} ${objectType} results`,
                 );
             }
-            // No filters - get all records
-            else {
+            // No filters - only fetch all records if explicitly requested
+            // If query attributes exist but all were filtered out (e.g., all null/empty),
+            // return empty array to prevent accidentally querying all records
+            else if (!attrs.queryAttributeValues || attrs.queryAttributeValues.size === 0) {
+                // No query attributes at all - get all records
                 const result = await makeGetRequest(
                     `/crm/v3/objects/${objectType}`,
                 );
                 inst = result.results || [];
+                console.log(
+                    `HUBSPOT RESOLVER: No filters provided, returned all ${inst.length} ${objectType}`,
+                );
+            } else {
+                // Query attributes were provided but all were null/empty/invalid
+                console.log(
+                    `HUBSPOT RESOLVER: All query filters were null/empty/invalid, returning empty array to prevent fetching all ${objectType}`,
+                );
+                inst = [];
             }
         }
 
@@ -254,10 +275,18 @@ async function queryWithFilters(objectType, entityType, attrs) {
 
 const getResponseBody = async (response) => {
     try {
+        // Clone the response so we can try multiple reads if needed
+        const clonedResponse = response.clone();
         try {
             return await response.json();
         } catch (e) {
-            return await response.text();
+            // If JSON parsing fails, try text on the cloned response
+            try {
+                return await clonedResponse.text();
+            } catch (textError) {
+                console.error("HUBSPOT RESOLVER: Error reading response as text:", textError);
+                return {};
+            }
         }
     } catch (error) {
         console.error("HUBSPOT RESOLVER: Error reading response body:", error);
@@ -751,12 +780,24 @@ export const deleteOwner = async (env, attributes) => {
 
 // Task functions
 export const createTask = async (env, attributes) => {
+    // Get timestamp and convert to Unix milliseconds if needed
+    const timestamp = attributes.attributes.get("hs_timestamp");
+    let convertedTimestamp = timestamp;
+    
+    if (timestamp) {
+        // If it's an ISO date string, convert to Unix milliseconds
+        if (typeof timestamp === 'string' && (timestamp.includes('T') || timestamp.includes('-'))) {
+            convertedTimestamp = isoToUnixMs(timestamp);
+            console.log(`HUBSPOT RESOLVER: Converted timestamp from ISO ${timestamp} to Unix ms ${convertedTimestamp}`);
+        }
+    }
+    
     const data = {
         properties: {
             hs_task_type: attributes.attributes.get("hs_task_type"),
             hs_task_subject: attributes.attributes.get("hs_task_subject"),
             hs_task_priority: attributes.attributes.get("hs_task_priority"),
-            hs_timestamp: attributes.attributes.get("hs_timestamp"),
+            hs_timestamp: convertedTimestamp,
             hs_task_status: attributes.attributes.get("hs_task_status"),
             hs_task_body: attributes.attributes.get("hs_task_body"),
             hubspot_owner_id: attributes.attributes.get("hubspot_owner_id"),
@@ -1605,13 +1646,49 @@ export const createNote = async (env, attributes) => {
             });
         }
 
-        // Create associations if any
+        // Create associations if any using v4 batch API
         if (associations.length > 0) {
             console.log("HUBSPOT RESOLVER: Creating note associations:", associations.length);
             console.log("HUBSPOT RESOLVER: Association details:", JSON.stringify(associations, null, 2));
+            
+            // Group associations by target object type for batch creation
+            const contactAssocs = associations.filter(a => a.types[0].associationTypeId === 202);
+            const companyAssocs = associations.filter(a => a.types[0].associationTypeId === 190);
+            const dealAssocs = associations.filter(a => a.types[0].associationTypeId === 214);
+            
             try {
-                await makePutRequest(`/crm/v3/objects/notes/${result.id}/associations`, { inputs: associations });
-                console.log("HUBSPOT RESOLVER: Note associations created successfully");
+                // Create contact associations
+                if (contactAssocs.length > 0) {
+                    const inputs = contactAssocs.map(assoc => ({
+                        from: { id: result.id },
+                        to: assoc.to,
+                        types: assoc.types
+                    }));
+                    await makePostRequest(`/crm/v4/associations/notes/contacts/batch/create`, { inputs });
+                    console.log("HUBSPOT RESOLVER: Contact associations created successfully");
+                }
+                
+                // Create company associations
+                if (companyAssocs.length > 0) {
+                    const inputs = companyAssocs.map(assoc => ({
+                        from: { id: result.id },
+                        to: assoc.to,
+                        types: assoc.types
+                    }));
+                    await makePostRequest(`/crm/v4/associations/notes/companies/batch/create`, { inputs });
+                    console.log("HUBSPOT RESOLVER: Company associations created successfully");
+                }
+                
+                // Create deal associations
+                if (dealAssocs.length > 0) {
+                    const inputs = dealAssocs.map(assoc => ({
+                        from: { id: result.id },
+                        to: assoc.to,
+                        types: assoc.types
+                    }));
+                    await makePostRequest(`/crm/v4/associations/notes/deals/batch/create`, { inputs });
+                    console.log("HUBSPOT RESOLVER: Deal associations created successfully");
+                }
             } catch (assocError) {
                 console.error("HUBSPOT RESOLVER: Failed to create note associations:", assocError);
                 console.error("HUBSPOT RESOLVER: Note was created (ID: " + result.id + ") but associations failed");
