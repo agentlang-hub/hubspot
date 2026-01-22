@@ -350,7 +350,7 @@ workflow upsertContact {
     
     {Contact {email? upsertContact.email}} @as contacts;
     
-    console.log("👤 HUBSPOT: Query completed, returned " + contacts.length + " contacts");
+    console.log("👤 HUBSPOT: Query completed, returned " + contacts.length + " contacts" + " and the email is: " + contacts.email);
     
     if (contacts.length > 0) {
         contacts @as [contact];
