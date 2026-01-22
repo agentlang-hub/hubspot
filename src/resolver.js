@@ -798,18 +798,42 @@ export const deleteOwner = async (env, attributes) => {
     }
 };
 
+// Helper function to parse timestamps that may be malformed due to AgentLang string concatenation
+const parseTimestamp = (timestamp) => {
+    if (!timestamp) return null;
+    
+    // Check if it's a malformed timestamp like "2026-01-22T14:26:14.352Z86400000"
+    // This happens when now() returns ISO string and gets concatenated with a number
+    if (typeof timestamp === 'string' && timestamp.includes('T') && timestamp.match(/Z\d+$/)) {
+        // Extract the ISO date part and the numeric offset
+        const match = timestamp.match(/^(.+Z)(\d+)$/);
+        if (match) {
+            const isoDate = match[1];
+            const offset = parseInt(match[2]);
+            const baseTime = new Date(isoDate).getTime();
+            const result = String(baseTime + offset);
+            console.log(`HUBSPOT RESOLVER: Fixed malformed timestamp ${timestamp} -> ISO: ${isoDate}, offset: ${offset}ms -> ${result}`);
+            return result;
+        }
+    }
+    
+    // If it's a normal ISO date string, convert to Unix milliseconds
+    if (typeof timestamp === 'string' && (timestamp.includes('T') || timestamp.includes('-'))) {
+        return isoToUnixMs(timestamp);
+    }
+    
+    // Otherwise return as-is (already a number or Unix timestamp)
+    return timestamp;
+};
+
 // Task functions
 export const createTask = async (env, attributes) => {
     // Get timestamp and convert to Unix milliseconds if needed
     const timestamp = attributes.attributes.get("hs_timestamp");
-    let convertedTimestamp = timestamp;
+    const convertedTimestamp = parseTimestamp(timestamp);
     
-    if (timestamp) {
-        // If it's an ISO date string, convert to Unix milliseconds
-        if (typeof timestamp === 'string' && (timestamp.includes('T') || timestamp.includes('-'))) {
-            convertedTimestamp = isoToUnixMs(timestamp);
-            console.log(`HUBSPOT RESOLVER: Converted timestamp from ISO ${timestamp} to Unix ms ${convertedTimestamp}`);
-        }
+    if (timestamp && convertedTimestamp !== timestamp) {
+        console.log(`HUBSPOT RESOLVER: Converted timestamp from ${timestamp} to Unix ms ${convertedTimestamp}`);
     }
     
     const data = {
@@ -1216,30 +1240,20 @@ export const createMeeting = async (env, attributes) => {
     const startTime = attributes.attributes.get("meeting_start_time");
     const endTime = attributes.attributes.get("meeting_end_time");
 
-    // Calculate times with smart defaults
+    // Calculate times with smart defaults using parseTimestamp helper
     let calculatedTimestamp;
     let calculatedStartTime;
     let calculatedEndTime;
 
     // Priority: meeting_date -> timestamp -> meeting_start_time
     if (meetingDate) {
-        // If meeting_date is provided, use it as the primary source
-        calculatedTimestamp =
-            meetingDate.includes("T") || meetingDate.includes("-")
-                ? isoToUnixMs(meetingDate)
-                : meetingDate;
-        calculatedStartTime = startTime || calculatedTimestamp;
+        calculatedTimestamp = parseTimestamp(meetingDate);
+        calculatedStartTime = startTime ? parseTimestamp(startTime) : calculatedTimestamp;
     } else if (timestamp) {
-        calculatedTimestamp =
-            timestamp.includes("T") || timestamp.includes("-")
-                ? isoToUnixMs(timestamp)
-                : timestamp;
-        calculatedStartTime = startTime || calculatedTimestamp;
+        calculatedTimestamp = parseTimestamp(timestamp);
+        calculatedStartTime = startTime ? parseTimestamp(startTime) : calculatedTimestamp;
     } else if (startTime) {
-        calculatedStartTime =
-            startTime.includes("T") || startTime.includes("-")
-                ? isoToUnixMs(startTime)
-                : startTime;
+        calculatedStartTime = parseTimestamp(startTime);
         calculatedTimestamp = calculatedStartTime;
     } else {
         // No time provided at all, use current time
@@ -1250,13 +1264,11 @@ export const createMeeting = async (env, attributes) => {
 
     // Calculate end time: if not provided, default to start + 1 hour (3600000ms)
     if (endTime) {
-        calculatedEndTime =
-            endTime.includes("T") || endTime.includes("-")
-                ? isoToUnixMs(endTime)
-                : endTime;
+        calculatedEndTime = parseTimestamp(endTime);
     } else {
         // Default to 1 hour meeting duration
-        calculatedEndTime = String(parseInt(calculatedStartTime) + 3600000);
+        const startTimeMs = parseInt(calculatedStartTime);
+        calculatedEndTime = isNaN(startTimeMs) ? null : String(startTimeMs + 3600000);
     }
 
     // Build properties object, filtering out undefined/null values

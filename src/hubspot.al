@@ -365,35 +365,42 @@ event upsertCompany {
 workflow upsertCompany {
     console.log("🏢 HUBSPOT: upsertCompany called with domain: " + upsertCompany.domain + ", name: " + upsertCompany.name);
     
-    {Company {domain? upsertCompany.domain}} @as companies;
-    
-    console.log("🏢 HUBSPOT: Query returned " + companies.length + " companies");
-    
-    if (companies.length > 0) {
-        companies @as [company];
-        
-        console.log("🏢 HUBSPOT: Updating existing company ID: " + company.id);
-        
-        {Company {
-            id? company.id,
-            lifecycle_stage upsertCompany.lifecycle_stage,
-            ai_lead_score upsertCompany.ai_lead_score
-        }} @as result;
-        
-        console.log("🏢 HUBSPOT: Company updated, ID: " + result.id);
-        result
+    // Check if both domain and name are empty/null - if so, skip company operations
+    if ((upsertCompany.domain == "") and (upsertCompany.name == "")) {
+        console.log("🏢 HUBSPOT: Skipping company upsert - both domain and name are empty");
+        // Return empty result - AgentLang will handle this gracefully
+        nil
     } else {
-        console.log("🏢 HUBSPOT: Creating new company");
+        {Company {domain? upsertCompany.domain}} @as companies;
         
-        {Company {
-            domain upsertCompany.domain,
-            name upsertCompany.name,
-            lifecycle_stage upsertCompany.lifecycle_stage,
-            ai_lead_score upsertCompany.ai_lead_score
-        }} @as result;
+        console.log("🏢 HUBSPOT: Query returned " + companies.length + " companies");
         
-        console.log("🏢 HUBSPOT: Company created, ID: " + result.id);
-        result
+        if (companies.length > 0) {
+            companies @as [company];
+            
+            console.log("🏢 HUBSPOT: Updating existing company ID: " + company.id);
+            
+            {Company {
+                id? company.id,
+                lifecycle_stage upsertCompany.lifecycle_stage,
+                ai_lead_score upsertCompany.ai_lead_score
+            }} @as result;
+            
+            console.log("🏢 HUBSPOT: Company updated, ID: " + result.id);
+            result
+        } else {
+            console.log("🏢 HUBSPOT: Creating new company");
+            
+            {Company {
+                domain upsertCompany.domain,
+                name upsertCompany.name,
+                lifecycle_stage upsertCompany.lifecycle_stage,
+                ai_lead_score upsertCompany.ai_lead_score
+            }} @as result;
+            
+            console.log("🏢 HUBSPOT: Company created, ID: " + result.id);
+            result
+        }
     }
 }
 
