@@ -260,26 +260,34 @@ workflow fetchCRMContext {
     false @as hasCompany;
     false @as hasContact;
     
+    console.log("🔍 HUBSPOT: fetchCRMContext called with domain: " + fetchCRMContext.companyDomain + ", email: " + fetchCRMContext.contactEmail);
+    
     if (fetchCRMContext.companyDomain) {
         {Company {domain? fetchCRMContext.companyDomain}} @as companies;
+        console.log("🔍 HUBSPOT: Company query returned " + companies.length + " results");
         
         if (companies.length > 0) {
             companies @as [comp];
             comp.id @as existingCompanyId;
             comp.name @as existingCompanyName;
+            console.log("🏢 HUBSPOT: Found existing company: " + existingCompanyId + ", " + existingCompanyName);
             true @as hasCompany
         }
     };
     
     if (fetchCRMContext.contactEmail) {
         {Contact {email? fetchCRMContext.contactEmail}} @as contacts;
+        console.log("🔍 HUBSPOT: Contact query returned " + contacts.length + " results");
         
         if (contacts.length > 0) {
             contacts @as [cont];
             cont.id @as existingContactId;
+            console.log("👤 HUBSPOT: Found existing contact: " + existingContactId);
             true @as hasContact
         }
     };
+    
+    console.log("🔍 HUBSPOT: fetchCRMContext returning - companyId: " + existingCompanyId + ", contactId: " + existingContactId);
     
     {CRMContext {
         existingCompanyId existingCompanyId,

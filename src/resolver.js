@@ -2,8 +2,44 @@
 import { makeInstance } from "agentlang/out/runtime/module.js";
 import { getLocalEnv } from "agentlang/out/runtime/auth/defs.js";
 
+/**
+ * Transforms HubSpot API response to AgentLang entity format
+ * HubSpot returns: { id: "123", properties: { email: "...", firstname: "..." } }
+ * AgentLang expects: { id: "123", email: "...", first_name: "..." }
+ */
+function transformFromHubSpot(hubspotData, entityType) {
+    const fieldMapping = FIELD_MAPPINGS[entityType] || {};
+    const reverseMapping = Object.fromEntries(
+        Object.entries(fieldMapping).map(([k, v]) => [v, k])
+    );
+    
+    const transformed = {
+        id: hubspotData.id,
+    };
+    
+    // Flatten properties and reverse map field names
+    if (hubspotData.properties) {
+        for (const [hubspotKey, value] of Object.entries(hubspotData.properties)) {
+            // Use reverse mapping if available, otherwise use the key as-is
+            const agentlangKey = reverseMapping[hubspotKey] || hubspotKey;
+            if (value !== null && value !== undefined) {
+                transformed[agentlangKey] = value;
+            }
+        }
+    }
+    
+    // Include other top-level fields
+    if (hubspotData.createdAt) transformed.createdAt = hubspotData.createdAt;
+    if (hubspotData.updatedAt) transformed.updatedAt = hubspotData.updatedAt;
+    if (hubspotData.archived !== undefined) transformed.archived = hubspotData.archived;
+    
+    return transformed;
+}
+
 function asInstance(entity, entityType) {
-    const instanceMap = new Map(Object.entries(entity));
+    // Transform HubSpot format to AgentLang format
+    const transformed = transformFromHubSpot(entity, entityType);
+    const instanceMap = new Map(Object.entries(transformed));
     return makeInstance("hubspot", entityType, instanceMap);
 }
 
@@ -25,6 +61,7 @@ const FIELD_MAPPINGS = {
     },
     Company: {
         name: "name",
+        domain: "domain",
         industry: "industry",
         description: "description",
         country: "country",
@@ -34,6 +71,7 @@ const FIELD_MAPPINGS = {
         owner: "hubspot_owner_id",
         year_founded: "founded_year",
         website_url: "website",
+        ai_lead_score: "ai_lead_score",
     },
     Deal: {
         deal_name: "dealname",
@@ -135,11 +173,18 @@ async function queryWithFilters(objectType, entityType, attrs) {
                     limit: 100,
                 };
 
+                console.log(
+                    `HUBSPOT RESOLVER: Querying ${objectType} with filters:`,
+                    JSON.stringify(filters),
+                );
                 const result = await makePostRequest(
                     `/crm/v3/objects/${objectType}/search`,
                     searchBody,
                 );
                 inst = result.results || [];
+                console.log(
+                    `HUBSPOT RESOLVER: Query returned ${inst.length} ${objectType} results`,
+                );
             }
             // No filters - get all records
             else {
@@ -161,7 +206,9 @@ async function queryWithFilters(objectType, entityType, attrs) {
         console.error(
             `HUBSPOT RESOLVER: Failed to query ${objectType}: ${error}`,
         );
-        return { result: "error", message: error.message };
+        console.error(`HUBSPOT RESOLVER: Error stack:`, error.stack);
+        // Return empty array instead of error object so workflows can handle it properly
+        return [];
     }
 }
 
@@ -389,6 +436,7 @@ export const createCompany = async (env, attributes) => {
     const data = {
         properties: {
             name: attributes.attributes.get("name"),
+            domain: attributes.attributes.get("domain"),
             industry: attributes.attributes.get("industry"),
             description: attributes.attributes.get("description"),
             country: attributes.attributes.get("country"),
@@ -398,6 +446,7 @@ export const createCompany = async (env, attributes) => {
             hubspot_owner_id: attributes.attributes.get("owner"),
             founded_year: attributes.attributes.get("year_founded"),
             website: attributes.attributes.get("website_url"),
+            ai_lead_score: attributes.attributes.get("ai_lead_score"),
         },
     };
 
@@ -426,6 +475,7 @@ export const updateCompany = async (env, attributes, newAttrs) => {
     const data = {
         properties: {
             name: newAttrs.get("name"),
+            domain: newAttrs.get("domain"),
             industry: newAttrs.get("industry"),
             description: newAttrs.get("description"),
             country: newAttrs.get("country"),
@@ -435,6 +485,7 @@ export const updateCompany = async (env, attributes, newAttrs) => {
             hubspot_owner_id: newAttrs.get("owner"),
             founded_year: newAttrs.get("year_founded"),
             website: newAttrs.get("website_url"),
+            ai_lead_score: newAttrs.get("ai_lead_score"),
         },
     };
 
