@@ -481,6 +481,22 @@ workflow updateCRMFromLead {
         "lead" @as lifecycle
     };
     
+    if (updateCRMFromLead.dealStage == "DISCOVERY") {
+        "appointmentscheduled" @as hubspotDealStage
+    } else if (updateCRMFromLead.dealStage == "MEETING") {
+        "qualifiedtobuy" @as hubspotDealStage
+    } else if (updateCRMFromLead.dealStage == "PROPOSAL") {
+        "presentationscheduled" @as hubspotDealStage
+    } else if (updateCRMFromLead.dealStage == "NEGOTIATION") {
+        "decisionmakerboughtin" @as hubspotDealStage
+    } else if (updateCRMFromLead.dealStage == "CLOSED_WON") {
+        "closedwon" @as hubspotDealStage
+    } else if (updateCRMFromLead.dealStage == "CLOSED_LOST") {
+        "closedlost" @as hubspotDealStage
+    } else {
+        "appointmentscheduled" @as hubspotDealStage
+    };
+    
     if (updateCRMFromLead.shouldCreateCompany) {
         {upsertCompany {
             name updateCRMFromLead.companyName,
@@ -500,7 +516,7 @@ workflow updateCRMFromLead {
             if (updateCRMFromLead.shouldCreateDeal) {
                 {Deal {
                     deal_name updateCRMFromLead.dealName,
-                    deal_stage updateCRMFromLead.dealStage,
+                    deal_stage hubspotDealStage,
                     owner updateCRMFromLead.ownerId,
                     associated_company company.id,
                     associated_contacts [contact.id],
@@ -622,7 +638,7 @@ workflow updateCRMFromLead {
                 if (updateCRMFromLead.shouldCreateDeal) {
                     {Deal {
                         deal_name updateCRMFromLead.dealName,
-                        deal_stage updateCRMFromLead.dealStage,
+                        deal_stage hubspotDealStage,
                         owner updateCRMFromLead.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id],
@@ -747,7 +763,7 @@ workflow updateCRMFromLead {
                 if (updateCRMFromLead.shouldCreateDeal) {
                     {Deal {
                         deal_name updateCRMFromLead.dealName,
-                        deal_stage updateCRMFromLead.dealStage,
+                        deal_stage hubspotDealStage,
                         owner updateCRMFromLead.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id],
@@ -876,7 +892,7 @@ workflow updateCRMFromLead {
                 if (updateCRMFromLead.shouldCreateDeal) {
                     {Deal {
                         deal_name updateCRMFromLead.dealName,
-                        deal_stage updateCRMFromLead.dealStage,
+                        deal_stage hubspotDealStage,
                         owner updateCRMFromLead.ownerId,
                         associated_company updateCRMFromLead.existingCompanyId,
                         associated_contacts [contact.id],
@@ -998,7 +1014,7 @@ workflow updateCRMFromLead {
                     if (updateCRMFromLead.shouldCreateDeal) {
                         {Deal {
                             deal_name updateCRMFromLead.dealName,
-                            deal_stage updateCRMFromLead.dealStage,
+                            deal_stage hubspotDealStage,
                             owner updateCRMFromLead.ownerId,
                             associated_company updateCRMFromLead.existingCompanyId,
                             associated_contacts [contact.id],
@@ -1123,7 +1139,7 @@ workflow updateCRMFromLead {
                     if (updateCRMFromLead.shouldCreateDeal) {
                         {Deal {
                             deal_name updateCRMFromLead.dealName,
-                            deal_stage updateCRMFromLead.dealStage,
+                            deal_stage hubspotDealStage,
                             owner updateCRMFromLead.ownerId,
                             associated_company updateCRMFromLead.existingCompanyId,
                             associated_contacts [contact.id],
@@ -1251,7 +1267,7 @@ workflow updateCRMFromLead {
                 if (updateCRMFromLead.shouldCreateDeal) {
                     {Deal {
                         deal_name updateCRMFromLead.dealName,
-                        deal_stage updateCRMFromLead.dealStage,
+                        deal_stage hubspotDealStage,
                         owner updateCRMFromLead.ownerId,
                         associated_contacts [contact.id],
                         description "Deal created from email thread"
@@ -1366,7 +1382,7 @@ workflow updateCRMFromLead {
                     if (updateCRMFromLead.shouldCreateDeal) {
                         {Deal {
                             deal_name updateCRMFromLead.dealName,
-                            deal_stage updateCRMFromLead.dealStage,
+                            deal_stage hubspotDealStage,
                             owner updateCRMFromLead.ownerId,
                             associated_contacts [contact.id],
                             description "Deal created from email thread"
@@ -1484,7 +1500,7 @@ workflow updateCRMFromLead {
                     if (updateCRMFromLead.shouldCreateDeal) {
                         {Deal {
                             deal_name updateCRMFromLead.dealName,
-                            deal_stage updateCRMFromLead.dealStage,
+                            deal_stage hubspotDealStage,
                             owner updateCRMFromLead.ownerId,
                             associated_contacts [contact.id],
                             description "Deal created from email thread"

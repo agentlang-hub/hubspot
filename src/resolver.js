@@ -179,7 +179,8 @@ async function queryWithFilters(objectType, entityType, attrs) {
 
                     const hubspotProperty = fieldMapping[key] || key;
 
-                    if (value !== null && value !== undefined) {
+                    // Skip empty string values as HubSpot rejects them
+                    if (value !== null && value !== undefined && value !== "") {
                         filters.push({
                             propertyName: hubspotProperty,
                             operator: "EQ",
@@ -752,14 +753,13 @@ export const deleteOwner = async (env, attributes) => {
 export const createTask = async (env, attributes) => {
     const data = {
         properties: {
-            hs_task_type: attributes.attributes.get("task_type"),
-            hs_task_subject: attributes.attributes.get("title"),
-            hs_task_priority: attributes.attributes.get("priority"),
-            hs_task_assigned_to: attributes.attributes.get("assigned_to"),
-            hs_task_due_date: attributes.attributes.get("due_date"),
-            hs_task_status: attributes.attributes.get("status"),
-            hs_task_body: attributes.attributes.get("description"),
-            hubspot_owner_id: attributes.attributes.get("owner"),
+            hs_task_type: attributes.attributes.get("hs_task_type"),
+            hs_task_subject: attributes.attributes.get("hs_task_subject"),
+            hs_task_priority: attributes.attributes.get("hs_task_priority"),
+            hs_timestamp: attributes.attributes.get("hs_timestamp"),
+            hs_task_status: attributes.attributes.get("hs_task_status"),
+            hs_task_body: attributes.attributes.get("hs_task_body"),
+            hubspot_owner_id: attributes.attributes.get("hubspot_owner_id"),
         },
     };
 
