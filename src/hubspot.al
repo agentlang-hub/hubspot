@@ -254,13 +254,13 @@ event fetchCRMContext {
 }
 
 workflow fetchCRMContext {
+    console.log("🔍 HUBSPOT: fetchCRMContext called with domain: " + fetchCRMContext.companyDomain + ", email: " + fetchCRMContext.contactEmail);
+    
     "" @as existingCompanyId;
     "" @as existingCompanyName;
-    "" @as existingContactId;
     false @as hasCompany;
+    "" @as existingContactId;
     false @as hasContact;
-    
-    console.log("🔍 HUBSPOT: fetchCRMContext called with domain: " + fetchCRMContext.companyDomain + ", email: " + fetchCRMContext.contactEmail);
     
     if (fetchCRMContext.companyDomain) {
         {Company {domain? fetchCRMContext.companyDomain}} @as companies;
@@ -268,9 +268,9 @@ workflow fetchCRMContext {
         
         if (companies.length > 0) {
             companies @as [comp];
+            console.log("🏢 HUBSPOT: Found existing company: " + comp.id + ", " + comp.name);
             comp.id @as existingCompanyId;
             comp.name @as existingCompanyName;
-            console.log("🏢 HUBSPOT: Found existing company: " + existingCompanyId + ", " + existingCompanyName);
             true @as hasCompany
         }
     };
@@ -281,8 +281,9 @@ workflow fetchCRMContext {
         
         if (contacts.length > 0) {
             contacts @as [cont];
+            console.log("👤 HUBSPOT: Contact object - id: " + cont.id + ", email: " + cont.email);
             cont.id @as existingContactId;
-            console.log("👤 HUBSPOT: Found existing contact: " + existingContactId);
+            console.log("👤 HUBSPOT: After assignment - existingContactId: " + existingContactId);
             true @as hasContact
         }
     };

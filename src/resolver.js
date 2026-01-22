@@ -23,8 +23,12 @@ function transformFromHubSpot(hubspotData, entityType) {
         'hs_additional_emails', 'hs_all_assigned_business_unit_ids'
     ];
     
+    console.log(
+        `HUBSPOT RESOLVER: Transforming ${entityType} - HubSpot ID: ${hubspotData.id}`
+    );
+    
     const transformed = {
-        id: hubspotData.id,
+        id: String(hubspotData.id),
     };
     
     // Flatten properties and reverse map field names
@@ -54,6 +58,14 @@ function transformFromHubSpot(hubspotData, entityType) {
 function asInstance(entity, entityType) {
     // Transform HubSpot format to AgentLang format
     const transformed = transformFromHubSpot(entity, entityType);
+    
+    // Debug log for Contact entities
+    if (entityType === "Contact") {
+        console.log(
+            `HUBSPOT RESOLVER: Transformed Contact - id: ${transformed.id}, email: ${transformed.email}`
+        );
+    }
+    
     const instanceMap = new Map(Object.entries(transformed));
     return makeInstance("hubspot", entityType, instanceMap);
 }
