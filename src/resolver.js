@@ -649,7 +649,77 @@ export const createDeal = async (env, attributes) => {
 
     try {
         const result = await makePostRequest("/crm/v3/objects/deals", data);
-        return { result: "success", id: result.id };
+        const dealId = result.id;
+        console.log(`HUBSPOT RESOLVER: Deal created successfully, ID: ${dealId}`);
+
+        // Handle associations
+        const associatedContacts = attributes.attributes.get("associated_contacts");
+        const associatedCompany = attributes.attributes.get("associated_company");
+
+        const associations = [];
+
+        // Associate with contacts
+        if (associatedContacts) {
+            const contactIds = Array.isArray(associatedContacts) ? associatedContacts : [associatedContacts];
+            console.log("HUBSPOT RESOLVER: Processing deal contact associations:", contactIds);
+            contactIds.forEach(contactId => {
+                if (contactId && contactId !== "" && contactId !== null) {
+                    console.log("HUBSPOT RESOLVER: Adding contact association:", contactId);
+                    associations.push({
+                        to: { id: contactId },
+                        types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 4 }]
+                    });
+                }
+            });
+        }
+
+        // Associate with company
+        if (associatedCompany && associatedCompany !== "" && associatedCompany !== null) {
+            console.log("HUBSPOT RESOLVER: Adding company association:", associatedCompany);
+            associations.push({
+                to: { id: associatedCompany },
+                types: [{ associationCategory: "HUBSPOT_DEFINED", associationTypeId: 342 }]
+            });
+        }
+
+        // Create associations if any using v4 batch API
+        if (associations.length > 0) {
+            console.log("HUBSPOT RESOLVER: Creating deal associations:", associations.length);
+            
+            // Group associations by target object type for batch creation
+            const contactAssocs = associations.filter(a => a.types[0].associationTypeId === 4);
+            const companyAssocs = associations.filter(a => a.types[0].associationTypeId === 342);
+            
+            try {
+                // Create contact associations
+                if (contactAssocs.length > 0) {
+                    const inputs = contactAssocs.map(assoc => ({
+                        from: { id: dealId },
+                        to: assoc.to,
+                        types: assoc.types
+                    }));
+                    await makePostRequest(`/crm/v4/associations/deals/contacts/batch/create`, { inputs });
+                    console.log("HUBSPOT RESOLVER: Deal contact associations created successfully");
+                }
+                
+                // Create company associations
+                if (companyAssocs.length > 0) {
+                    const inputs = companyAssocs.map(assoc => ({
+                        from: { id: dealId },
+                        to: assoc.to,
+                        types: assoc.types
+                    }));
+                    await makePostRequest(`/crm/v4/associations/deals/companies/batch/create`, { inputs });
+                    console.log("HUBSPOT RESOLVER: Deal company associations created successfully");
+                }
+            } catch (assocError) {
+                console.error("HUBSPOT RESOLVER: Failed to create deal associations:", assocError);
+                console.error("HUBSPOT RESOLVER: Deal was created (ID: " + dealId + ") but associations failed");
+                // Return success anyway since the deal was created
+            }
+        }
+
+        return { result: "success", id: dealId };
     } catch (error) {
         console.error(`HUBSPOT RESOLVER: Failed to create deal: ${error}`);
         return { result: "error", message: error.message };
