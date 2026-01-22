@@ -529,6 +529,9 @@ workflow updateCRMFromLead {
     } else {
         console.log("💼 HUBSPOT: Skipping deal creation");
         console.log("📝 HUBSPOT: Creating analysis note");
+        console.log("📝 HUBSPOT: Note will be associated with contact ID: " + contact.id);
+        console.log("📝 HUBSPOT: Note will be associated with company ID: " + companyId);
+        console.log("📝 HUBSPOT: Owner ID: " + updateCRMFromLead.ownerId);
 
         {Note {
             note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
@@ -536,7 +539,9 @@ workflow updateCRMFromLead {
             owner updateCRMFromLead.ownerId,
             associated_company companyId,
             associated_contacts [contact.id]
-        }} @as note
+        }} @as note;
+
+        console.log("✅ HUBSPOT: Analysis note created successfully, ID: " + note.id)
     };
 
     console.log("📋 HUBSPOT: Creating follow-up task");

@@ -1441,11 +1441,26 @@ export const createNote = async (env, attributes) => {
     console.log("========== HUBSPOT RESOLVER: createNote called ==========");
     console.log("HUBSPOT RESOLVER: All attributes:", [...attributes.attributes.entries()]);
 
+    const noteBody = attributes.attributes.get("note_body");
+    const timestamp = attributes.attributes.get("timestamp") || new Date().toISOString();
+    const ownerId = attributes.attributes.get("owner");
+
+    console.log("HUBSPOT RESOLVER: note_body length:", noteBody ? noteBody.length : 0);
+    console.log("HUBSPOT RESOLVER: timestamp:", timestamp);
+    console.log("HUBSPOT RESOLVER: owner:", ownerId);
+
     const properties = {
-        hs_note_body: attributes.attributes.get("note_body"),
-        hs_timestamp: attributes.attributes.get("timestamp") || new Date().toISOString(),
-        hubspot_owner_id: attributes.attributes.get("owner"),
+        hs_note_body: noteBody,
+        hs_timestamp: timestamp,
     };
+
+    // Only add owner if it's not empty
+    if (ownerId && ownerId !== "" && ownerId !== null) {
+        properties.hubspot_owner_id = ownerId;
+        console.log("HUBSPOT RESOLVER: Including owner ID:", ownerId);
+    } else {
+        console.log("HUBSPOT RESOLVER: No owner ID provided, skipping");
+    }
 
     const data = { properties };
 
