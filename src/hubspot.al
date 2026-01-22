@@ -254,53 +254,115 @@ event fetchCRMContext {
 }
 
 workflow fetchCRMContext {
-    {Company {domain? fetchCRMContext.companyDomain}} @as companies;
-    console.log("🔍 HUBSPOT: Company query returned " + companies.length + " results");
-        
-    if (companies.length > 0) {
-        companies @as [comp];
-        console.log("🏢 HUBSPOT: Found existing company: " + comp.id + ", " + comp.name);
+    if (fetchCRMContext.companyDomain) {
+        {Company {domain? fetchCRMContext.companyDomain}} @as companies;
+        console.log("🔍 HUBSPOT: Company query returned " + companies.length);
 
-        {Contact {email? fetchCRMContext.contactEmail}} @as contact;
-        if (contact.length > 0 ) {
-            contact @as [cont];
+        if (fetchCRMContext.contactEmail) {
+            {Contact {email? fetchCRMContext.contactEmail}} @as contact;
+            console.log("🔍 HUBSPOT: Contact query returned " + contact.length);
 
-            console.log("🔍 HUBSPOT: Contact query returned " + cont.length + " results are: " + cont.email + " and the id is: " + cont.id);
-            {CRMContext {
-                existingCompanyId comp.id,
-                existingCompanyName comp.name,
-                existingContactId cont.id,
-                hasCompany true,
-                hasContact true
-            }}
-        } else {
-            {CRMContext {
-                existingCompanyId comp.id,
-                existingCompanyName comp.name,
-                existingContactId "",
-                hasCompany true,
-                hasContact false
-            }}
+            if (companies.length > 0) {
+                companies @as [comp];
+                console.log("🏢 HUBSPOT: Found existing company: " + comp.id + ", " + comp.name);
+
+                if (contact.length > 0 ) {
+                    contact @as [cont];
+
+                    console.log("🔍 HUBSPOT: Contact query returned " + cont.length + " results are: " + cont.email + " and the id is: " + cont.id);
+                    {CRMContext {
+                        existingCompanyId comp.id,
+                        existingCompanyName comp.name,
+                        existingContactId cont.id,
+                        hasCompany true,
+                        hasContact true
+                    }}
+                } else {
+                    {CRMContext {
+                        existingCompanyId comp.id,
+                        existingCompanyName comp.name,
+                        existingContactId "",
+                        hasCompany true,
+                        hasContact false
+                    }}
+                }
+            } else {
+                if (contact.length > 0 ) {
+                    contact @as [cont];
+
+                    console.log("🔍 HUBSPOT: Contact query returned " + cont.length + " results are: " + cont.email + " and the id is: " + cont.id);
+                    {CRMContext {
+                        existingCompanyId "",
+                        existingCompanyName "",
+                        existingContactId cont.id,
+                        hasCompany false,
+                        hasContact true
+                    }}
+                } else {
+                    {CRMContext {
+                        existingCompanyId "",
+                        existingCompanyName "",
+                        existingContactId "",
+                        hasCompany false,
+                        hasContact false
+                    }}
+                }
+            }
+            
+        }  else {
+            if (companies.length > 0) {
+                companies @as [comp];
+                console.log("🏢 HUBSPOT: Found existing company: " + comp.id + ", " + comp.name);
+                {CRMContext {
+                        existingCompanyId comp.id,
+                        existingCompanyName comp.name,
+                        existingContactId "",
+                        hasCompany true,
+                        hasContact false
+                }}
+
+            } else {
+                {CRMContext {
+                        existingCompanyId "",
+                        existingCompanyName "",
+                        existingContactId "",
+                        hasCompany true,
+                        hasContact false
+                }}
+            }
         }
-    } else {
-        if (contact.length > 0 ) {
-            contact @as [cont];
 
-            console.log("🔍 HUBSPOT: Contact query returned " + cont.length + " results are: " + cont.email + " and the id is: " + cont.id);
-            {CRMContext {
-                existingCompanyId "",
-                existingCompanyName "",
-                existingContactId cont.id,
-                hasCompany false,
-                hasContact true
-            }}
+    } else {
+        if (fetchCRMContext.contactEmail) {
+            {Contact {email? fetchCRMContext.contactEmail}} @as contact;
+            console.log("🔍 HUBSPOT: Contact query returned " + contact.length);
+            if (contact.length > 0 ) {
+                contact @as [cont];
+
+                console.log("🔍 HUBSPOT: Contact query returned " + cont.length + " results are: " + cont.email + " and the id is: " + cont.id);
+                {CRMContext {
+                    existingCompanyId "",
+                    existingCompanyName "",
+                    existingContactId cont.id,
+                    hasCompany false,
+                    hasContact true
+                }}
+            } else {
+                {CRMContext {
+                    existingCompanyId "",
+                    existingCompanyName "",
+                    existingContactId "",
+                    hasCompany false,
+                    hasContact false
+                }}
+            }
         } else {
             {CRMContext {
-                existingCompanyId "",
-                existingCompanyName "",
-                existingContactId "",
-                hasCompany false,
-                hasContact false
+                    existingCompanyId "",
+                    existingCompanyName "",
+                    existingContactId "",
+                    hasCompany false,
+                    hasContact false
             }}
         }
     }
