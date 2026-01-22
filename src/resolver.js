@@ -1529,7 +1529,8 @@ export const createMeeting = async (env, attributes) => {
         hs_meeting_end_time: calculatedEndTime,
         hs_meeting_outcome:
             attributes.attributes.get("meeting_outcome") || "COMPLETED",
-        hs_activity_type: attributes.attributes.get("activity_type"),
+        // Note: hs_activity_type is not a valid property for meetings in HubSpot
+        // Meetings are already typed as "MEETING" by default
         hs_attachment_ids: attributes.attributes.get("attachment_ids"),
     };
 
@@ -1702,7 +1703,7 @@ export const updateMeeting = async (env, attributes, newAttrs) => {
             hs_meeting_start_time: newAttrs.get("meeting_start_time"),
             hs_meeting_end_time: newAttrs.get("meeting_end_time"),
             hs_meeting_outcome: newAttrs.get("meeting_outcome"),
-            hs_activity_type: newAttrs.get("activity_type"),
+            // Note: hs_activity_type is not a valid property for meetings in HubSpot
             hs_attachment_ids: newAttrs.get("attachment_ids"),
         },
     };
