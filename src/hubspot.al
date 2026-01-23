@@ -458,7 +458,7 @@ event LeadSyncTriggered {
 }
 
 workflow syncLeadToCRM {
-    if (true) {
+    if (LeadSyncTriggered.leadStage == "QUALIFIED") {
         "salesqualifiedlead" @as lifecycle
     } else if (LeadSyncTriggered.leadStage == "ENGAGED") {
         "marketingqualifiedlead" @as lifecycle
@@ -576,7 +576,7 @@ workflow syncLeadToCRM {
                     associated_contacts [contact.id]
                 }} @as task;
                 
-                if (true) {
+                if (LeadSyncTriggered.dealStage != "NONE") {
                     {Meeting {
                         meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                         meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -698,7 +698,7 @@ workflow syncLeadToCRM {
                         associated_contacts [contact.id]
                     }} @as task;
                     
-                    if (true) {
+                    if (LeadSyncTriggered.dealStage != "NONE") {
                         {Meeting {
                             meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                             meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -823,7 +823,7 @@ workflow syncLeadToCRM {
                         associated_contacts [contact.id]
                     }} @as task;
                     
-                    if (true) {
+                    if (LeadSyncTriggered.dealStage != "NONE") {
                         {Meeting {
                             meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                             meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -952,7 +952,7 @@ workflow syncLeadToCRM {
                         associated_contacts [contact.id]
                     }} @as task;
                     
-                    if (true) {
+                    if (LeadSyncTriggered.dealStage != "NONE") {
                         {Meeting {
                             meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                             meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -1074,7 +1074,7 @@ workflow syncLeadToCRM {
                             associated_contacts [contact.id]
                         }} @as task;
                         
-                        if (true) {
+                        if (LeadSyncTriggered.dealStage != "NONE") {
                             {Meeting {
                                 meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                                 meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -1199,7 +1199,7 @@ workflow syncLeadToCRM {
                             associated_contacts [contact.id]
                         }} @as task;
                         
-                        if (true) {
+                        if (LeadSyncTriggered.dealStage != "NONE") {
                             {Meeting {
                                 meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                                 meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -1321,7 +1321,7 @@ workflow syncLeadToCRM {
                         associated_contacts [contact.id]
                     }} @as task;
                     
-                    if (true) {
+                    if (LeadSyncTriggered.dealStage != "NONE") {
                         {Meeting {
                             meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                             meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -1436,7 +1436,7 @@ workflow syncLeadToCRM {
                             associated_contacts [contact.id]
                         }} @as task;
                         
-                        if (true) {
+                        if (LeadSyncTriggered.dealStage != "NONE") {
                             {Meeting {
                                 meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                                 meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
@@ -1554,7 +1554,7 @@ workflow syncLeadToCRM {
                             associated_contacts [contact.id]
                         }} @as task;
                         
-                        if (true) {
+                        if (LeadSyncTriggered.dealStage != "NONE") {
                             {Meeting {
                                 meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
                                 meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
