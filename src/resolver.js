@@ -22,10 +22,7 @@ function transformFromHubSpot(hubspotData, entityType) {
         'hs_marketable_status', 'hs_marketable_reason_id', 'hs_marketable_reason_type',
         'hs_additional_emails', 'hs_all_assigned_business_unit_ids'
     ];
-    
-        `HUBSPOT RESOLVER: Transforming ${entityType} - HubSpot ID: ${hubspotData.id}`
-    );
-    
+
     const transformed = {
         id: String(hubspotData.id),
     };
@@ -57,13 +54,7 @@ function transformFromHubSpot(hubspotData, entityType) {
 function asInstance(entity, entityType) {
     // Transform HubSpot format to AgentLang format
     const transformed = transformFromHubSpot(entity, entityType);
-    
-    // Debug log for Contact entities
-    if (entityType === "Contact") {
-            `HUBSPOT RESOLVER: Transformed Contact - id: ${transformed.id}, email: ${transformed.email}`
-        );
-    }
-    
+
     const instanceMap = new Map(Object.entries(transformed));
     return makeInstance("hubspot", entityType, instanceMap);
 }
@@ -163,8 +154,6 @@ async function queryWithFilters(objectType, entityType, attrs) {
 
         // Case 1: Query by ID using direct GET endpoint
         if (id) {
-                `HUBSPOT RESOLVER: Querying ${objectType} by ID using direct GET: ${id}`
-            );
             inst = await makeGetRequest(`/crm/v3/objects/${objectType}/${id}`);
             if (!(inst instanceof Array)) {
                 inst = [inst];
@@ -187,8 +176,6 @@ async function queryWithFilters(objectType, entityType, attrs) {
                     // Skip 'id' field - HubSpot doesn't support filtering by id in Search API
                     // IDs should be queried using the direct GET endpoint instead
                     if (key === "id") {
-                            `HUBSPOT RESOLVER: Skipping 'id' filter - use direct GET /crm/v3/objects/${objectType}/{id} instead`
-                        );
                         continue;
                     }
 
@@ -236,21 +223,12 @@ async function queryWithFilters(objectType, entityType, attrs) {
                     `/crm/v3/objects/${objectType}`,
                 );
                 inst = result.results || [];
-                    `HUBSPOT RESOLVER: No filters provided, returned all ${inst.length} ${objectType}`,
-                );
             } else {
                 // Query attributes were provided but all were null/empty/invalid
                 // Check if 'id' was the only attribute and it was null/empty
                 const hasOnlyIdFilter = attrs.queryAttributeValues.size === 1 && 
                                        attrs.queryAttributeValues.has("id");
-                
-                if (hasOnlyIdFilter) {
-                        `HUBSPOT RESOLVER: Query by ID requested but ID was null/empty, returning empty array`,
-                    );
-                } else {
-                        `HUBSPOT RESOLVER: All query filters were null/empty/invalid, returning empty array to prevent fetching all ${objectType}`,
-                    );
-                }
+
                 inst = [];
             }
         }
