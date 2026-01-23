@@ -240,7 +240,7 @@ resolver hubspot10 [hubspot/MeetingAssociationQuery] {
     query hsr.getMeetingAssociationsResolver
 }
 
-record CRMContext {
+record CRMDataSnapshot {
     existingCompanyId String @optional,
     existingCompanyName String @optional,
     existingContactId String @optional,
@@ -248,23 +248,23 @@ record CRMContext {
     hasContact Boolean @default(false)
 }
 
-event fetchCRMContext {
+event CRMDataRequested {
     companyDomain String @optional,
     contactEmail String @optional
 }
 
-workflow fetchCRMContext {
-    if (fetchCRMContext.companyDomain) {
-        {Company {domain? fetchCRMContext.companyDomain}} @as companies;
+workflow retrieveCRMData {
+    if (CRMDataRequested.companyDomain) {
+        {Company {domain? CRMDataRequested.companyDomain}} @as companies;
 
-        if (fetchCRMContext.contactEmail) {
-            {Contact {email? fetchCRMContext.contactEmail}} @as contact;
+        if (CRMDataRequested.contactEmail) {
+            {Contact {email? CRMDataRequested.contactEmail}} @as contact;
 
             if (companies.length > 0) {
                 companies @as [comp];
                 if (contact.length > 0 ) {
                     contact @as [cont];
-                    {CRMContext {
+                    {CRMDataSnapshot {
                         existingCompanyId comp.id,
                         existingCompanyName comp.name,
                         existingContactId cont.id,
@@ -272,7 +272,7 @@ workflow fetchCRMContext {
                         hasContact true
                     }}
                 } else {
-                    {CRMContext {
+                    {CRMDataSnapshot {
                         existingCompanyId comp.id,
                         existingCompanyName comp.name,
                         existingContactId "",
@@ -284,7 +284,7 @@ workflow fetchCRMContext {
                 if (contact.length > 0 ) {
                     contact @as [cont];
 
-                    {CRMContext {
+                    {CRMDataSnapshot {
                         existingCompanyId "",
                         existingCompanyName "",
                         existingContactId cont.id,
@@ -292,7 +292,7 @@ workflow fetchCRMContext {
                         hasContact true
                     }}
                 } else {
-                    {CRMContext {
+                    {CRMDataSnapshot {
                         existingCompanyId "",
                         existingCompanyName "",
                         existingContactId "",
@@ -304,7 +304,7 @@ workflow fetchCRMContext {
         }  else {
             if (companies.length > 0) {
                 companies @as [comp];
-                {CRMContext {
+                {CRMDataSnapshot {
                         existingCompanyId comp.id,
                         existingCompanyName comp.name,
                         existingContactId "",
@@ -312,7 +312,7 @@ workflow fetchCRMContext {
                         hasContact false
                 }}
             } else {
-                {CRMContext {
+                {CRMDataSnapshot {
                         existingCompanyId "",
                         existingCompanyName "",
                         existingContactId "",
@@ -323,11 +323,11 @@ workflow fetchCRMContext {
         }
 
     } else {
-        if (fetchCRMContext.contactEmail) {
-            {Contact {email? fetchCRMContext.contactEmail}} @as contact;
+        if (CRMDataRequested.contactEmail) {
+            {Contact {email? CRMDataRequested.contactEmail}} @as contact;
             if (contact.length > 0 ) {
                 contact @as [cont];
-                {CRMContext {
+                {CRMDataSnapshot {
                     existingCompanyId "",
                     existingCompanyName "",
                     existingContactId cont.id,
@@ -335,7 +335,7 @@ workflow fetchCRMContext {
                     hasContact true
                 }}
             } else {
-                {CRMContext {
+                {CRMDataSnapshot {
                     existingCompanyId "",
                     existingCompanyName "",
                     existingContactId "",
@@ -344,7 +344,7 @@ workflow fetchCRMContext {
                 }}
             }
         } else {
-            {CRMContext {
+            {CRMDataSnapshot {
                     existingCompanyId "",
                     existingCompanyName "",
                     existingContactId "",
@@ -355,21 +355,21 @@ workflow fetchCRMContext {
     }
 }
 
-event upsertCompany {
+event CompanyUpsertRequested {
     name String,
     domain String,
     lifecycle_stage String @optional,
     ai_lead_score Int @optional
 }
 
-workflow upsertCompany {
+workflow upsertCompanyRecord {
     
     // Check if both domain and name are empty/null - if so, skip company operations
-    if ((upsertCompany.domain == "") and (upsertCompany.name == "")) {
+    if ((CompanyUpsertRequested.domain == "") and (CompanyUpsertRequested.name == "")) {
         // Return empty result - AgentLang will handle this gracefully
         nil
     } else {
-        {Company {domain? upsertCompany.domain}} @as companies;
+        {Company {domain? CompanyUpsertRequested.domain}} @as companies;
         
         
         if (companies.length > 0) {
@@ -378,18 +378,18 @@ workflow upsertCompany {
             
             {Company {
                 id? company.id,
-                lifecycle_stage upsertCompany.lifecycle_stage,
-                ai_lead_score upsertCompany.ai_lead_score
+                lifecycle_stage CompanyUpsertRequested.lifecycle_stage,
+                ai_lead_score CompanyUpsertRequested.ai_lead_score
             }} @as result;
             
             result
         } else {
             
             {Company {
-                domain upsertCompany.domain,
-                name upsertCompany.name,
-                lifecycle_stage upsertCompany.lifecycle_stage,
-                ai_lead_score upsertCompany.ai_lead_score
+                domain CompanyUpsertRequested.domain,
+                name CompanyUpsertRequested.name,
+                lifecycle_stage CompanyUpsertRequested.lifecycle_stage,
+                ai_lead_score CompanyUpsertRequested.ai_lead_score
             }} @as result;
             
             result
@@ -397,16 +397,16 @@ workflow upsertCompany {
     }
 }
 
-event upsertContact {
+event ContactUpsertRequested {
     email String,
     first_name String,
     last_name String,
     company String @optional
 }
 
-workflow upsertContact {
+workflow upsertContactRecord {
     
-    {Contact {email? upsertContact.email}} @as contacts;
+    {Contact {email? ContactUpsertRequested.email}} @as contacts;
     
     
     if (contacts.length > 0) {
@@ -415,17 +415,17 @@ workflow upsertContact {
     } else {
         
         {Contact {
-            email upsertContact.email,
-            first_name upsertContact.first_name,
-            last_name upsertContact.last_name,
-            company upsertContact.company
+            email ContactUpsertRequested.email,
+            first_name ContactUpsertRequested.first_name,
+            last_name ContactUpsertRequested.last_name,
+            company ContactUpsertRequested.company
         }} @as result;
         
         result
     }
 }
 
-record CRMUpdateResult {
+record CRMSyncResult {
     companyId String @optional,
     companyName String @optional,
     contactId String,
@@ -437,7 +437,7 @@ record CRMUpdateResult {
     meetingId String @optional
 }
 
-event updateCRMFromLead {
+event LeadSyncTriggered {
     shouldCreateCompany Boolean,
     shouldCreateContact Boolean,
     shouldCreateDeal Boolean,
@@ -457,71 +457,71 @@ event updateCRMFromLead {
     existingContactId String @optional
 }
 
-workflow updateCRMFromLead {
+workflow syncLeadToCRM {
     if (true) {
         "salesqualifiedlead" @as lifecycle
-    } else if (updateCRMFromLead.leadStage == "ENGAGED") {
+    } else if (LeadSyncTriggered.leadStage == "ENGAGED") {
         "marketingqualifiedlead" @as lifecycle
     } else {
         "lead" @as lifecycle
     };
     
-    if (updateCRMFromLead.dealStage == "DISCOVERY") {
+    if (LeadSyncTriggered.dealStage == "DISCOVERY") {
         "appointmentscheduled" @as hubspotDealStage
-    } else if (updateCRMFromLead.dealStage == "MEETING") {
+    } else if (LeadSyncTriggered.dealStage == "MEETING") {
         "qualifiedtobuy" @as hubspotDealStage
-    } else if (updateCRMFromLead.dealStage == "PROPOSAL") {
+    } else if (LeadSyncTriggered.dealStage == "PROPOSAL") {
         "presentationscheduled" @as hubspotDealStage
-    } else if (updateCRMFromLead.dealStage == "NEGOTIATION") {
+    } else if (LeadSyncTriggered.dealStage == "NEGOTIATION") {
         "decisionmakerboughtin" @as hubspotDealStage
-    } else if (updateCRMFromLead.dealStage == "CLOSED_WON") {
+    } else if (LeadSyncTriggered.dealStage == "CLOSED_WON") {
         "closedwon" @as hubspotDealStage
-    } else if (updateCRMFromLead.dealStage == "CLOSED_LOST") {
+    } else if (LeadSyncTriggered.dealStage == "CLOSED_LOST") {
         "closedlost" @as hubspotDealStage
     } else {
         "appointmentscheduled" @as hubspotDealStage
     };
     
-    if (updateCRMFromLead.shouldCreateCompany) {
-        {upsertCompany {
-            name updateCRMFromLead.companyName,
-            domain updateCRMFromLead.companyDomain,
+    if (LeadSyncTriggered.shouldCreateCompany) {
+        {CompanyUpsertRequested {
+            name LeadSyncTriggered.companyName,
+            domain LeadSyncTriggered.companyDomain,
             lifecycle_stage lifecycle,
-            ai_lead_score updateCRMFromLead.leadScore
+            ai_lead_score LeadSyncTriggered.leadScore
         }} @as company;
         
-        if (updateCRMFromLead.shouldCreateContact) {
-            {upsertContact {
-                email updateCRMFromLead.contactEmail,
-                first_name updateCRMFromLead.contactFirstName,
-                last_name updateCRMFromLead.contactLastName,
+        if (LeadSyncTriggered.shouldCreateContact) {
+            {ContactUpsertRequested {
+                email LeadSyncTriggered.contactEmail,
+                first_name LeadSyncTriggered.contactFirstName,
+                last_name LeadSyncTriggered.contactLastName,
                 company company.id
             }} @as contact;
             
-            if (updateCRMFromLead.shouldCreateDeal) {
+            if (LeadSyncTriggered.shouldCreateDeal) {
                 {Deal {
-                    deal_name updateCRMFromLead.dealName,
+                    deal_name LeadSyncTriggered.dealName,
                     deal_stage hubspotDealStage,
-                    owner updateCRMFromLead.ownerId,
+                    owner LeadSyncTriggered.ownerId,
                     associated_company company.id,
                     associated_contacts [contact.id],
                     description "Deal created from email thread"
                 }} @as deal;
                 
                 {Note {
-                    note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                    note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                     timestamp now(),
-                    owner updateCRMFromLead.ownerId,
+                    owner LeadSyncTriggered.ownerId,
                     associated_company company.id,
                     associated_contacts [contact.id],
                     associated_deal deal.id
                 }} @as note;
                 
                 {Task {
-                    hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                    hs_task_body "Lead: " + company.name + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                    hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                    hs_task_body "Lead: " + company.name + "\nStage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                     hs_timestamp now() + (24 * 3600000),
-                    hubspot_owner_id updateCRMFromLead.ownerId,
+                    hubspot_owner_id LeadSyncTriggered.ownerId,
                     hs_task_status "NOT_STARTED",
                     hs_task_type "EMAIL",
                     hs_task_priority "MEDIUM",
@@ -531,12 +531,12 @@ workflow updateCRMFromLead {
                 }} @as task;
                 
                 {Meeting {
-                    meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                    meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                    meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                    meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                     timestamp now() + (2 * 24 * 3600000),
                     meeting_start_time now() + (2 * 24 * 3600000),
                     meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                    owner updateCRMFromLead.ownerId,
+                    owner LeadSyncTriggered.ownerId,
                     meeting_outcome "SCHEDULED",
                     activity_type "MEETING",
                     associated_contacts [contact.id],
@@ -544,7 +544,7 @@ workflow updateCRMFromLead {
                     associated_deals [deal.id]
                 }} @as meeting;
                 
-                {CRMUpdateResult {
+                {CRMSyncResult {
                     companyId company.id,
                     companyName company.name,
                     contactId contact.id,
@@ -557,18 +557,18 @@ workflow updateCRMFromLead {
                 }}
             } else {
                 {Note {
-                    note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                    note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                     timestamp now(),
-                    owner updateCRMFromLead.ownerId,
+                    owner LeadSyncTriggered.ownerId,
                     associated_company company.id,
                     associated_contacts [contact.id]
                 }} @as note;
                 
                 {Task {
-                    hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                    hs_task_body "Lead: " + company.name + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                    hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                    hs_task_body "Lead: " + company.name + "\nStage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                     hs_timestamp now() + (24 * 3600000),
-                    hubspot_owner_id updateCRMFromLead.ownerId,
+                    hubspot_owner_id LeadSyncTriggered.ownerId,
                     hs_task_status "NOT_STARTED",
                     hs_task_type "EMAIL",
                     hs_task_priority "MEDIUM",
@@ -578,19 +578,19 @@ workflow updateCRMFromLead {
                 
                 if (true) {
                     {Meeting {
-                        meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                        meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                        meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                        meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                         timestamp now() + (2 * 24 * 3600000),
                         meeting_start_time now() + (2 * 24 * 3600000),
                         meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         meeting_outcome "SCHEDULED",
                         activity_type "MEETING",
                         associated_contacts [contact.id],
                         associated_companies [company.id]
                     }} @as meeting;
                     
-                    {CRMUpdateResult {
+                    {CRMSyncResult {
                         companyId company.id,
                         companyName company.name,
                         contactId contact.id,
@@ -602,7 +602,7 @@ workflow updateCRMFromLead {
                         meetingId meeting.id
                     }}
                 } else {
-                    {CRMUpdateResult {
+                    {CRMSyncResult {
                         companyId company.id,
                         companyName company.name,
                         contactId contact.id,
@@ -616,34 +616,34 @@ workflow updateCRMFromLead {
                 }
             }
         } else {
-            if (updateCRMFromLead.existingContactId) {
-                {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
+            if (LeadSyncTriggered.existingContactId) {
+                {Contact {id? LeadSyncTriggered.existingContactId}} @as existingContacts;
                 existingContacts @as [contact];
                 
-                if (updateCRMFromLead.shouldCreateDeal) {
+                if (LeadSyncTriggered.shouldCreateDeal) {
                     {Deal {
-                        deal_name updateCRMFromLead.dealName,
+                        deal_name LeadSyncTriggered.dealName,
                         deal_stage hubspotDealStage,
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id],
                         description "Deal created from email thread"
                     }} @as deal;
                     
                     {Note {
-                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id],
                         associated_deal deal.id
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Lead: " + company.name + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Lead: " + company.name + "\nStage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
@@ -653,12 +653,12 @@ workflow updateCRMFromLead {
                     }} @as task;
                     
                     {Meeting {
-                        meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                        meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                        meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                        meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                         timestamp now() + (2 * 24 * 3600000),
                         meeting_start_time now() + (2 * 24 * 3600000),
                         meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         meeting_outcome "SCHEDULED",
                         activity_type "MEETING",
                         associated_contacts [contact.id],
@@ -666,7 +666,7 @@ workflow updateCRMFromLead {
                         associated_deals [deal.id]
                     }} @as meeting;
                     
-                    {CRMUpdateResult {
+                    {CRMSyncResult {
                         companyId company.id,
                         companyName company.name,
                         contactId contact.id,
@@ -679,18 +679,18 @@ workflow updateCRMFromLead {
                     }}
                 } else {
                     {Note {
-                        note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id]
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Lead: " + company.name + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Lead: " + company.name + "\nStage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
@@ -700,19 +700,19 @@ workflow updateCRMFromLead {
                     
                     if (true) {
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
                             associated_companies [company.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId company.id,
                             companyName company.name,
                             contactId contact.id,
@@ -724,7 +724,7 @@ workflow updateCRMFromLead {
                             meetingId meeting.id
                         }}
                     } else {
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId company.id,
                             companyName company.name,
                             contactId contact.id,
@@ -738,37 +738,37 @@ workflow updateCRMFromLead {
                     }
                 }
             } else {
-                {upsertContact {
-                    email updateCRMFromLead.contactEmail,
-                    first_name updateCRMFromLead.contactFirstName,
-                    last_name updateCRMFromLead.contactLastName,
+                {ContactUpsertRequested {
+                    email LeadSyncTriggered.contactEmail,
+                    first_name LeadSyncTriggered.contactFirstName,
+                    last_name LeadSyncTriggered.contactLastName,
                     company company.id
                 }} @as contact;
                 
-                if (updateCRMFromLead.shouldCreateDeal) {
+                if (LeadSyncTriggered.shouldCreateDeal) {
                     {Deal {
-                        deal_name updateCRMFromLead.dealName,
+                        deal_name LeadSyncTriggered.dealName,
                         deal_stage hubspotDealStage,
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id],
                         description "Deal created from email thread"
                     }} @as deal;
                     
                     {Note {
-                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id],
                         associated_deal deal.id
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Lead: " + company.name + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Lead: " + company.name + "\nStage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
@@ -778,12 +778,12 @@ workflow updateCRMFromLead {
                     }} @as task;
                     
                     {Meeting {
-                        meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                        meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                        meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                        meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                         timestamp now() + (2 * 24 * 3600000),
                         meeting_start_time now() + (2 * 24 * 3600000),
                         meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         meeting_outcome "SCHEDULED",
                         activity_type "MEETING",
                         associated_contacts [contact.id],
@@ -791,7 +791,7 @@ workflow updateCRMFromLead {
                         associated_deals [deal.id]
                     }} @as meeting;
                     
-                    {CRMUpdateResult {
+                    {CRMSyncResult {
                         companyId company.id,
                         companyName company.name,
                         contactId contact.id,
@@ -804,18 +804,18 @@ workflow updateCRMFromLead {
                     }}
                 } else {
                     {Note {
-                        note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_company company.id,
                         associated_contacts [contact.id]
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Lead: " + company.name + "\nStage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Lead: " + company.name + "\nStage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
@@ -825,19 +825,19 @@ workflow updateCRMFromLead {
                     
                     if (true) {
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
                             associated_companies [company.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId company.id,
                             companyName company.name,
                             contactId contact.id,
@@ -849,7 +849,7 @@ workflow updateCRMFromLead {
                             meetingId meeting.id
                         }}
                     } else {
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId company.id,
                             companyName company.name,
                             contactId contact.id,
@@ -865,64 +865,64 @@ workflow updateCRMFromLead {
             }
         }
     } else {
-        if (updateCRMFromLead.existingCompanyId) {
-            if (updateCRMFromLead.shouldCreateContact) {
-                {upsertContact {
-                    email updateCRMFromLead.contactEmail,
-                    first_name updateCRMFromLead.contactFirstName,
-                    last_name updateCRMFromLead.contactLastName,
-                    company updateCRMFromLead.existingCompanyId
+        if (LeadSyncTriggered.existingCompanyId) {
+            if (LeadSyncTriggered.shouldCreateContact) {
+                {ContactUpsertRequested {
+                    email LeadSyncTriggered.contactEmail,
+                    first_name LeadSyncTriggered.contactFirstName,
+                    last_name LeadSyncTriggered.contactLastName,
+                    company LeadSyncTriggered.existingCompanyId
                 }} @as contact;
                 
-                if (updateCRMFromLead.shouldCreateDeal) {
+                if (LeadSyncTriggered.shouldCreateDeal) {
                     {Deal {
-                        deal_name updateCRMFromLead.dealName,
+                        deal_name LeadSyncTriggered.dealName,
                         deal_stage hubspotDealStage,
-                        owner updateCRMFromLead.ownerId,
-                        associated_company updateCRMFromLead.existingCompanyId,
+                        owner LeadSyncTriggered.ownerId,
+                        associated_company LeadSyncTriggered.existingCompanyId,
                         associated_contacts [contact.id],
                         description "Deal created from email thread"
                     }} @as deal;
                     
                     {Note {
-                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
-                        associated_company updateCRMFromLead.existingCompanyId,
+                        owner LeadSyncTriggered.ownerId,
+                        associated_company LeadSyncTriggered.existingCompanyId,
                         associated_contacts [contact.id],
                         associated_deal deal.id
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
-                        associated_company updateCRMFromLead.existingCompanyId,
+                        associated_company LeadSyncTriggered.existingCompanyId,
                         associated_contacts [contact.id],
                         associated_deal deal.id
                     }} @as task;
                     
                     {Meeting {
-                        meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                        meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                        meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                        meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                         timestamp now() + (2 * 24 * 3600000),
                         meeting_start_time now() + (2 * 24 * 3600000),
                         meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         meeting_outcome "SCHEDULED",
                         activity_type "MEETING",
                         associated_contacts [contact.id],
-                        associated_companies [updateCRMFromLead.existingCompanyId],
+                        associated_companies [LeadSyncTriggered.existingCompanyId],
                         associated_deals [deal.id]
                     }} @as meeting;
                     
-                    {CRMUpdateResult {
-                        companyId updateCRMFromLead.existingCompanyId,
-                        companyName "",
+                    {CRMSyncResult {
+                        companyId company.id,
+                        companyName company.name,
                         contactId contact.id,
                         contactEmail contact.email,
                         dealId deal.id,
@@ -933,41 +933,41 @@ workflow updateCRMFromLead {
                     }}
                 } else {
                     {Note {
-                        note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
-                        associated_company updateCRMFromLead.existingCompanyId,
+                        owner LeadSyncTriggered.ownerId,
+                        associated_company LeadSyncTriggered.existingCompanyId,
                         associated_contacts [contact.id]
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
-                        associated_company updateCRMFromLead.existingCompanyId,
+                        associated_company LeadSyncTriggered.existingCompanyId,
                         associated_contacts [contact.id]
                     }} @as task;
                     
                     if (true) {
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
-                            associated_companies [updateCRMFromLead.existingCompanyId]
+                            associated_companies [LeadSyncTriggered.existingCompanyId]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
-                            companyId updateCRMFromLead.existingCompanyId,
+                        {CRMSyncResult {
+                            companyId LeadSyncTriggered.existingCompanyId,
                             companyName "",
                             contactId contact.id,
                             contactEmail contact.email,
@@ -978,8 +978,8 @@ workflow updateCRMFromLead {
                             meetingId meeting.id
                         }}
                     } else {
-                        {CRMUpdateResult {
-                            companyId updateCRMFromLead.existingCompanyId,
+                        {CRMSyncResult {
+                            companyId LeadSyncTriggered.existingCompanyId,
                             companyName "",
                             contactId contact.id,
                             contactEmail contact.email,
@@ -992,58 +992,58 @@ workflow updateCRMFromLead {
                     }
                 }
             } else {
-                if (updateCRMFromLead.existingContactId) {
-                    {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
+                if (LeadSyncTriggered.existingContactId) {
+                    {Contact {id? LeadSyncTriggered.existingContactId}} @as existingContacts;
                     existingContacts @as [contact];
                     
-                    if (updateCRMFromLead.shouldCreateDeal) {
+                    if (LeadSyncTriggered.shouldCreateDeal) {
                         {Deal {
-                            deal_name updateCRMFromLead.dealName,
+                            deal_name LeadSyncTriggered.dealName,
                             deal_stage hubspotDealStage,
-                            owner updateCRMFromLead.ownerId,
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            owner LeadSyncTriggered.ownerId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id],
                             description "Deal created from email thread"
                         }} @as deal;
                         
                         {Note {
-                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            owner LeadSyncTriggered.ownerId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id],
                             associated_deal deal.id
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id],
                             associated_deal deal.id
                         }} @as task;
                         
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
-                            associated_companies [updateCRMFromLead.existingCompanyId],
+                            associated_companies [LeadSyncTriggered.existingCompanyId],
                             associated_deals [deal.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
-                            companyId updateCRMFromLead.existingCompanyId,
+                        {CRMSyncResult {
+                            companyId LeadSyncTriggered.existingCompanyId,
                             companyName "",
                             contactId contact.id,
                             contactEmail contact.email,
@@ -1055,41 +1055,41 @@ workflow updateCRMFromLead {
                         }}
                     } else {
                         {Note {
-                            note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            owner LeadSyncTriggered.ownerId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id]
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id]
                         }} @as task;
                         
                         if (true) {
                             {Meeting {
-                                meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                                meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                                meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                                meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                                 timestamp now() + (2 * 24 * 3600000),
                                 meeting_start_time now() + (2 * 24 * 3600000),
                                 meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                                owner updateCRMFromLead.ownerId,
+                                owner LeadSyncTriggered.ownerId,
                                 meeting_outcome "SCHEDULED",
                                 activity_type "MEETING",
                                 associated_contacts [contact.id],
-                                associated_companies [updateCRMFromLead.existingCompanyId]
+                                associated_companies [LeadSyncTriggered.existingCompanyId]
                             }} @as meeting;
                             
-                            {CRMUpdateResult {
-                                companyId updateCRMFromLead.existingCompanyId,
+                            {CRMSyncResult {
+                                companyId LeadSyncTriggered.existingCompanyId,
                                 companyName "",
                                 contactId contact.id,
                                 contactEmail contact.email,
@@ -1100,8 +1100,8 @@ workflow updateCRMFromLead {
                                 meetingId meeting.id
                             }}
                         } else {
-                            {CRMUpdateResult {
-                                companyId updateCRMFromLead.existingCompanyId,
+                            {CRMSyncResult {
+                                companyId LeadSyncTriggered.existingCompanyId,
                                 companyName "",
                                 contactId contact.id,
                                 contactEmail contact.email,
@@ -1114,61 +1114,61 @@ workflow updateCRMFromLead {
                         }
                     }
                 } else {
-                    {upsertContact {
-                        email updateCRMFromLead.contactEmail,
-                        first_name updateCRMFromLead.contactFirstName,
-                        last_name updateCRMFromLead.contactLastName,
-                        company updateCRMFromLead.existingCompanyId
+                    {ContactUpsertRequested {
+                        email LeadSyncTriggered.contactEmail,
+                        first_name LeadSyncTriggered.contactFirstName,
+                        last_name LeadSyncTriggered.contactLastName,
+                        company LeadSyncTriggered.existingCompanyId
                     }} @as contact;
                     
-                    if (updateCRMFromLead.shouldCreateDeal) {
+                    if (LeadSyncTriggered.shouldCreateDeal) {
                         {Deal {
-                            deal_name updateCRMFromLead.dealName,
+                            deal_name LeadSyncTriggered.dealName,
                             deal_stage hubspotDealStage,
-                            owner updateCRMFromLead.ownerId,
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            owner LeadSyncTriggered.ownerId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id],
                             description "Deal created from email thread"
                         }} @as deal;
                         
                         {Note {
-                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            owner LeadSyncTriggered.ownerId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id],
                             associated_deal deal.id
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id],
                             associated_deal deal.id
                         }} @as task;
                         
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
-                            associated_companies [updateCRMFromLead.existingCompanyId],
+                            associated_companies [LeadSyncTriggered.existingCompanyId],
                             associated_deals [deal.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
-                            companyId updateCRMFromLead.existingCompanyId,
+                        {CRMSyncResult {
+                            companyId LeadSyncTriggered.existingCompanyId,
                             companyName "",
                             contactId contact.id,
                             contactEmail contact.email,
@@ -1180,41 +1180,41 @@ workflow updateCRMFromLead {
                         }}
                     } else {
                         {Note {
-                            note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            owner LeadSyncTriggered.ownerId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id]
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
-                            associated_company updateCRMFromLead.existingCompanyId,
+                            associated_company LeadSyncTriggered.existingCompanyId,
                             associated_contacts [contact.id]
                         }} @as task;
                         
                         if (true) {
                             {Meeting {
-                                meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                                meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                                meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                                meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                                 timestamp now() + (2 * 24 * 3600000),
                                 meeting_start_time now() + (2 * 24 * 3600000),
                                 meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                                owner updateCRMFromLead.ownerId,
+                                owner LeadSyncTriggered.ownerId,
                                 meeting_outcome "SCHEDULED",
                                 activity_type "MEETING",
                                 associated_contacts [contact.id],
-                                associated_companies [updateCRMFromLead.existingCompanyId]
+                                associated_companies [LeadSyncTriggered.existingCompanyId]
                             }} @as meeting;
                             
-                            {CRMUpdateResult {
-                                companyId updateCRMFromLead.existingCompanyId,
+                            {CRMSyncResult {
+                                companyId LeadSyncTriggered.existingCompanyId,
                                 companyName "",
                                 contactId contact.id,
                                 contactEmail contact.email,
@@ -1225,8 +1225,8 @@ workflow updateCRMFromLead {
                                 meetingId meeting.id
                             }}
                         } else {
-                            {CRMUpdateResult {
-                                companyId updateCRMFromLead.existingCompanyId,
+                            {CRMSyncResult {
+                                companyId LeadSyncTriggered.existingCompanyId,
                                 companyName "",
                                 contactId contact.id,
                                 contactEmail contact.email,
@@ -1241,36 +1241,36 @@ workflow updateCRMFromLead {
                 }
             }
         } else {
-            if (updateCRMFromLead.shouldCreateContact) {
-                {upsertContact {
-                    email updateCRMFromLead.contactEmail,
-                    first_name updateCRMFromLead.contactFirstName,
-                    last_name updateCRMFromLead.contactLastName,
+            if (LeadSyncTriggered.shouldCreateContact) {
+                {ContactUpsertRequested {
+                    email LeadSyncTriggered.contactEmail,
+                    first_name LeadSyncTriggered.contactFirstName,
+                    last_name LeadSyncTriggered.contactLastName,
                     company ""
                 }} @as contact;
                 
-                if (updateCRMFromLead.shouldCreateDeal) {
+                if (LeadSyncTriggered.shouldCreateDeal) {
                     {Deal {
-                        deal_name updateCRMFromLead.dealName,
+                        deal_name LeadSyncTriggered.dealName,
                         deal_stage hubspotDealStage,
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_contacts [contact.id],
                         description "Deal created from email thread"
                     }} @as deal;
                     
                     {Note {
-                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_contacts [contact.id],
                         associated_deal deal.id
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
@@ -1279,19 +1279,19 @@ workflow updateCRMFromLead {
                     }} @as task;
                     
                     {Meeting {
-                        meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                        meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                        meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                        meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                         timestamp now() + (2 * 24 * 3600000),
                         meeting_start_time now() + (2 * 24 * 3600000),
                         meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         meeting_outcome "SCHEDULED",
                         activity_type "MEETING",
                         associated_contacts [contact.id],
                         associated_deals [deal.id]
                     }} @as meeting;
                     
-                    {CRMUpdateResult {
+                    {CRMSyncResult {
                         companyId "",
                         companyName "",
                         contactId contact.id,
@@ -1304,17 +1304,17 @@ workflow updateCRMFromLead {
                     }}
                 } else {
                     {Note {
-                        note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                        note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                         timestamp now(),
-                        owner updateCRMFromLead.ownerId,
+                        owner LeadSyncTriggered.ownerId,
                         associated_contacts [contact.id]
                     }} @as note;
                     
                     {Task {
-                        hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                        hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                        hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                        hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                         hs_timestamp now() + (24 * 3600000),
-                        hubspot_owner_id updateCRMFromLead.ownerId,
+                        hubspot_owner_id LeadSyncTriggered.ownerId,
                         hs_task_status "NOT_STARTED",
                         hs_task_type "EMAIL",
                         hs_task_priority "MEDIUM",
@@ -1323,18 +1323,18 @@ workflow updateCRMFromLead {
                     
                     if (true) {
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId "",
                             companyName "",
                             contactId contact.id,
@@ -1346,7 +1346,7 @@ workflow updateCRMFromLead {
                             meetingId meeting.id
                         }}
                     } else {
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId "",
                             companyName "",
                             contactId contact.id,
@@ -1360,32 +1360,32 @@ workflow updateCRMFromLead {
                     }
                 }
             } else {
-                if (updateCRMFromLead.existingContactId) {
-                    {Contact {id? updateCRMFromLead.existingContactId}} @as existingContacts;
+                if (LeadSyncTriggered.existingContactId) {
+                    {Contact {id? LeadSyncTriggered.existingContactId}} @as existingContacts;
                     existingContacts @as [contact];
                     
-                    if (updateCRMFromLead.shouldCreateDeal) {
+                    if (LeadSyncTriggered.shouldCreateDeal) {
                         {Deal {
-                            deal_name updateCRMFromLead.dealName,
+                            deal_name LeadSyncTriggered.dealName,
                             deal_stage hubspotDealStage,
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             associated_contacts [contact.id],
                             description "Deal created from email thread"
                         }} @as deal;
                         
                         {Note {
-                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             associated_contacts [contact.id],
                             associated_deal deal.id
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
@@ -1394,19 +1394,19 @@ workflow updateCRMFromLead {
                         }} @as task;
                         
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
                             associated_deals [deal.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId "",
                             companyName "",
                             contactId contact.id,
@@ -1419,17 +1419,17 @@ workflow updateCRMFromLead {
                         }}
                     } else {
                         {Note {
-                            note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             associated_contacts [contact.id]
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
@@ -1438,18 +1438,18 @@ workflow updateCRMFromLead {
                         
                         if (true) {
                             {Meeting {
-                                meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                                meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                                meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                                meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                                 timestamp now() + (2 * 24 * 3600000),
                                 meeting_start_time now() + (2 * 24 * 3600000),
                                 meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                                owner updateCRMFromLead.ownerId,
+                                owner LeadSyncTriggered.ownerId,
                                 meeting_outcome "SCHEDULED",
                                 activity_type "MEETING",
                                 associated_contacts [contact.id]
                             }} @as meeting;
                             
-                            {CRMUpdateResult {
+                            {CRMSyncResult {
                                 companyId "",
                                 companyName "",
                                 contactId contact.id,
@@ -1461,7 +1461,7 @@ workflow updateCRMFromLead {
                                 meetingId meeting.id
                             }}
                         } else {
-                            {CRMUpdateResult {
+                            {CRMSyncResult {
                                 companyId "",
                                 companyName "",
                                 contactId contact.id,
@@ -1475,35 +1475,35 @@ workflow updateCRMFromLead {
                         }
                     }
                 } else {
-                    {upsertContact {
-                        email updateCRMFromLead.contactEmail,
-                        first_name updateCRMFromLead.contactFirstName,
-                        last_name updateCRMFromLead.contactLastName,
+                    {ContactUpsertRequested {
+                        email LeadSyncTriggered.contactEmail,
+                        first_name LeadSyncTriggered.contactFirstName,
+                        last_name LeadSyncTriggered.contactLastName,
                         company ""
                     }} @as contact;
                     
-                    if (updateCRMFromLead.shouldCreateDeal) {
+                    if (LeadSyncTriggered.shouldCreateDeal) {
                         {Deal {
-                            deal_name updateCRMFromLead.dealName,
+                            deal_name LeadSyncTriggered.dealName,
                             deal_stage hubspotDealStage,
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             associated_contacts [contact.id],
                             description "Deal created from email thread"
                         }} @as deal;
                         
                         {Note {
-                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + updateCRMFromLead.dealStage + "\n\nLead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Deal Created: " + deal.deal_name + "\nStage: " + LeadSyncTriggered.dealStage + "\n\nLead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             associated_contacts [contact.id],
                             associated_deal deal.id
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
@@ -1512,19 +1512,19 @@ workflow updateCRMFromLead {
                         }} @as task;
                         
                         {Meeting {
-                            meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                            meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                            meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                            meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                             timestamp now() + (2 * 24 * 3600000),
                             meeting_start_time now() + (2 * 24 * 3600000),
                             meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             meeting_outcome "SCHEDULED",
                             activity_type "MEETING",
                             associated_contacts [contact.id],
                             associated_deals [deal.id]
                         }} @as meeting;
                         
-                        {CRMUpdateResult {
+                        {CRMSyncResult {
                             companyId "",
                             companyName "",
                             contactId contact.id,
@@ -1537,17 +1537,17 @@ workflow updateCRMFromLead {
                         }}
                     } else {
                         {Note {
-                            note_body "Lead Analysis: " + updateCRMFromLead.reasoning + "\nScore: " + updateCRMFromLead.leadScore + "\nStage: " + updateCRMFromLead.leadStage + "\nNext Action: " + updateCRMFromLead.nextAction,
+                            note_body "Lead Analysis: " + LeadSyncTriggered.reasoning + "\nScore: " + LeadSyncTriggered.leadScore + "\nStage: " + LeadSyncTriggered.leadStage + "\nNext Action: " + LeadSyncTriggered.nextAction,
                             timestamp now(),
-                            owner updateCRMFromLead.ownerId,
+                            owner LeadSyncTriggered.ownerId,
                             associated_contacts [contact.id]
                         }} @as note;
                         
                         {Task {
-                            hs_task_subject "Follow up: " + updateCRMFromLead.nextAction,
-                            hs_task_body "Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nAction: " + updateCRMFromLead.nextAction + "\n\nReasoning: " + updateCRMFromLead.reasoning,
+                            hs_task_subject "Follow up: " + LeadSyncTriggered.nextAction,
+                            hs_task_body "Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nAction: " + LeadSyncTriggered.nextAction + "\n\nReasoning: " + LeadSyncTriggered.reasoning,
                             hs_timestamp now() + (24 * 3600000),
-                            hubspot_owner_id updateCRMFromLead.ownerId,
+                            hubspot_owner_id LeadSyncTriggered.ownerId,
                             hs_task_status "NOT_STARTED",
                             hs_task_type "EMAIL",
                             hs_task_priority "MEDIUM",
@@ -1556,18 +1556,18 @@ workflow updateCRMFromLead {
                         
                         if (true) {
                             {Meeting {
-                                meeting_title "Follow-up Discussion: " + updateCRMFromLead.nextAction,
-                                meeting_body "Lead Stage: " + updateCRMFromLead.leadStage + " (Score: " + updateCRMFromLead.leadScore + ")\n\nDiscussion Points:\n- " + updateCRMFromLead.nextAction + "\n\nBackground:\n" + updateCRMFromLead.reasoning,
+                                meeting_title "Follow-up Discussion: " + LeadSyncTriggered.nextAction,
+                                meeting_body "Lead Stage: " + LeadSyncTriggered.leadStage + " (Score: " + LeadSyncTriggered.leadScore + ")\n\nDiscussion Points:\n- " + LeadSyncTriggered.nextAction + "\n\nBackground:\n" + LeadSyncTriggered.reasoning,
                                 timestamp now() + (2 * 24 * 3600000),
                                 meeting_start_time now() + (2 * 24 * 3600000),
                                 meeting_end_time now() + (2 * 24 * 3600000) + (3600000),
-                                owner updateCRMFromLead.ownerId,
+                                owner LeadSyncTriggered.ownerId,
                                 meeting_outcome "SCHEDULED",
                                 activity_type "MEETING",
                                 associated_contacts [contact.id]
                             }} @as meeting;
                             
-                            {CRMUpdateResult {
+                            {CRMSyncResult {
                                 companyId "",
                                 companyName "",
                                 contactId contact.id,
@@ -1579,7 +1579,7 @@ workflow updateCRMFromLead {
                                 meetingId meeting.id
                             }}
                         } else {
-                            {CRMUpdateResult {
+                            {CRMSyncResult {
                                 companyId "",
                                 companyName "",
                                 contactId contact.id,
