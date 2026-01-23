@@ -203,16 +203,11 @@ async function queryWithFilters(objectType, entityType, attrs) {
                     limit: 100,
                 };
 
-                    `HUBSPOT RESOLVER: Querying ${objectType} with filters:`,
-                    JSON.stringify(filters),
-                );
                 const result = await makePostRequest(
                     `/crm/v3/objects/${objectType}/search`,
                     searchBody,
                 );
                 inst = result.results || [];
-                    `HUBSPOT RESOLVER: Query returned ${inst.length} ${objectType} results`,
-                );
             }
             // No filters - only fetch all records if explicitly requested
             // If query attributes exist but all were filtered out (e.g., all null/empty),
